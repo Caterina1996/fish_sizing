@@ -1,0 +1,42 @@
+services:
+  ultralytics_gpu-dev:
+    container_name: ${PROJECT_NAME}-ultralytics_gpu
+    build:
+      context: .
+      dockerfile: Dockerfile.ultralytics_gpu
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    image: ultralytics_gpu-dev
+    depends_on:
+      - ros-dev
+    runtime: nvidia            # <-- Add this line
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all       # <-- Add this if you want all GPUs
+              capabilities: [gpu]
+    environment:
+      - DISPLAY=$CONTAINER_DISPLAY
+    volumes:
+      - ./:/home/rosuser/repo
+      - ${DATASET}:/home/rosuser/repo/dataset:rw
+      - ${DL_UTILS_PATH:-./external_repos/DL_utils}:/home/rosuser/repo/src/DL_utils/:rw
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${XAUTHORITY:-/run/user/1000/gdm/Xauthority}:/home/rosuser/.Xauthority:rw
+      - /dev:/dev
+    networks:
+      app-network:
+        aliases:
+          - ultralytics_gpu-container
+    tty: true
+    stdin_open: true
+    command: bash -c "tail -f /dev/null"
+ 
+networks:
+  app-network:
+    name: ${PROJECT_NAME}-app-network
+    driver: bridge
+    attachable: true

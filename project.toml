@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fish_sizing"
+version = "0.1.0"
+description = "Pipeline de detección y medida de peces en estereoscopía"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+  { name = "Caterina Muntaner", email = "c.muntaner@gmail.com" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+# Dependencias automáticas (se instalan con pip)
+dependencies = [
+    "numpy",
+    "opencv-contrib-python",  # Contrib suele incluir módulos extra útiles
+    "open3d",
+    "ultralytics",            # YOLOv11
+    "pandas",
+    "scipy",
+    "scikit-learn",           # Para PCA y DBSCAN
+    "hdbscan",                # Clustering 
+    "pyntcloud",              # Procesamiento de nubes de puntos
+    "termcolor",              # Prints de colores
+    "natsort",                # Ordenar archivos correctamente
+    "cloudpickle",            # Serialización robusta
+    "matplotlib",             # Gráficos
+    "requests",
+    "tqdm"                    # Barras de progreso 
+]
+
+# Dónde buscar el código fuente
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# (Opcional) Scripts de consola directos
+# Esto permite que al instalar, puedas escribir "fish-sizing" en la terminal
+[project.scripts]
+fish-sizing = "fish_sizing.__main__:main"
