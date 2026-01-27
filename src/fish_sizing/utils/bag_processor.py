@@ -13,34 +13,68 @@ from typing import TypedDict, List, Dict, Any
 # Això no és lo seu pero bueno...
 class CvBridge:
     """
-    Versión 'falsa' de CvBridge escrita en Python puro.
-    Permite leer imágenes de ROS en Python 3.9 sin necesitar la librería compilada de C++.
+    Implementación pura en Python de CvBridge.
+    Soporta: RGB, BGR, Mono y BAYER (RAW) -> Color.
     """
     def imgmsg_to_cv2(self, img_msg, desired_encoding="passthrough"):
         dtype = np.uint8
-        n_channels = 1
         
-        # 1. Detectar canales según el nombre del encoding ROS
-        if "8UC1" in img_msg.encoding or "mono8" in img_msg.encoding:
-            n_channels = 1
-        elif "8UC3" in img_msg.encoding or "bgr8" in img_msg.encoding or "rgb8" in img_msg.encoding:
+        # 1. Análisis de canales
+        pixel_count = img_msg.width * img_msg.height
+        data_len = len(img_msg.data)
+        
+        # Si el tamaño de datos es el triple que pixeles, es color nativo
+        if data_len == pixel_count * 3:
             n_channels = 3
-        
-        # 2. Convertir los bytes crudos a un array de NumPy
-        # Esto es lo que hacía C++ internamente, pero numpy lo hace muy rápido también
+        else:
+            n_channels = 1 # Puede ser Grayscale o Bayer RAW
+            if "16" in img_msg.encoding:
+                dtype = np.uint16
+
+        # 2. Convertir buffer a numpy
         img_buf = np.frombuffer(img_msg.data, dtype=dtype)
         
-        # 3. Darle forma (Alto, Ancho, Canales)
+        # 3. Reshape inicial
         try:
-            img = img_buf.reshape(img_msg.height, img_msg.width, n_channels)
-        except ValueError:
-            # Fallback por si acaso viene plano
-            img = img_buf.reshape(img_msg.height, img_msg.width, -1)
+            if n_channels == 3:
+                img = img_buf.reshape(img_msg.height, img_msg.width, 3)
+            else:
+                img = img_buf.reshape(img_msg.height, img_msg.width)
+        except ValueError as e:
+            # Fallback de emergencia
+            print(f"❌ Error reshape: {e}")
+            return np.zeros((img_msg.height, img_msg.width, 3), dtype=np.uint8)
             
-        # 4. Ajustar orden de colores (ROS suele usar RGB, OpenCV usa BGR)
-        if desired_encoding == "bgr8" and "rgb8" in img_msg.encoding:
-            img = img[:, :, ::-1] # Invierte el orden de canales
-            
+        # 4. LÓGICA DE COLOR Y DEBAYERING
+        encoding = img_msg.encoding.lower()
+
+        # CASO A: La imagen YA viene en 3 canales (RGB/BGR)
+        if n_channels == 3:
+            if desired_encoding == "bgr8" and "rgb" in encoding:
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                
+        # CASO B: La imagen viene en 1 canal (RAW/Bayer) pero queremos Color
+        elif n_channels == 1 and desired_encoding == "bgr8":
+            if "bayer" in encoding:
+                # Necesitamos 'revelar' el RAW (Demosaicing)
+                # Mapeo típico de ROS a OpenCV
+                if "rggb" in encoding:
+                    code = cv2.COLOR_BayerBG2BGR 
+                elif "bggr" in encoding:
+                    code = cv2.COLOR_BayerRG2BGR
+                elif "gbrg" in encoding:
+                    code = cv2.COLOR_BayerGR2BGR
+                elif "grbg" in encoding:
+                    code = cv2.COLOR_BayerGB2BGR
+                else:
+                    # Default común para muchas cámaras
+                    code = cv2.COLOR_BayerBG2BGR 
+                
+                try:
+                    img = cv2.cvtColor(img, code)
+                except Exception:
+                    pass # Si falla, devolvemos la imagen en gris
+
         return img
 
 

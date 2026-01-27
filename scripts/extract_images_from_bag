@@ -113,11 +113,11 @@ def main():
         
         # 2. Reducir tamaño (Opcional, pero recomendado)
         img_proc.downsample(0.5)
-        
+        img_proc.apply_dehaze(omega=0.85, window_size=15) #-> Revisar esto xq ahora mismo no va be/no interesa
         
         # # Opción SGBM Prep (Grayscale + CLAHE - Mejor para Stereo Matcher):
         # img_proc.convert_to_custom_grayscale(w_g=0.7, w_b=0.3, w_r=0.0)
-        # img_proc.match_histograms(reference="left") # Igualar brillos
+        img_proc.match_histograms(reference="left") # Igualar brillos
         # img_proc.apply_clahe(clip_limit=3.0)
         
         # C) Obtener resultados

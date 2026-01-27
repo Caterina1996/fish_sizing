@@ -185,6 +185,106 @@ class ImageProcessor:
             self.processed_right = self._clahe(self.processed_right)
         return self
     
+    def apply_dehaze(self, omega=0.90, window_size=15):
+        """
+        Aplica eliminación de neblina (Dehazing) usando Dark Channel Prior.
+        Omega: Cantidad de neblina a quitar (0.0 a 1.0). 
+               Para agua, mejor 0.8-0.9 para no oscurecer demasiado.
+        """
+        self.processed_left = self._dehaze_dcp(self.processed_left, omega, window_size)
+        if self.is_stereo:
+            self.processed_right = self._dehaze_dcp(self.processed_right, omega, window_size)
+        return self
+
+    @staticmethod
+    def _guided_filter(I, p, r, eps):
+        """
+        Filtro Guiado para suavizar el mapa de transmisión respetando bordes.
+        I: Imagen guía (normalizada 0-1, grayscale)
+        p: Imagen a filtrar (mapa de transmisión rudo)
+        r: Radio del filtro
+        eps: Regularización
+        """
+        # Calcular medias con filtro de caja (box filter)
+        mean_I = cv2.boxFilter(I, cv2.CV_64F, (r, r))
+        mean_p = cv2.boxFilter(p, cv2.CV_64F, (r, r))
+        mean_Ip = cv2.boxFilter(I * p, cv2.CV_64F, (r, r))
+        
+        # Covarianza de (I, p)
+        cov_Ip = mean_Ip - mean_I * mean_p
+        
+        # Varianza de I
+        mean_II = cv2.boxFilter(I * I, cv2.CV_64F, (r, r))
+        var_I = mean_II - mean_I * mean_I
+        
+        # Coeficientes lineal a y b
+        a = cov_Ip / (var_I + eps)
+        b = mean_p - a * mean_I
+        
+        # Medias de a y b
+        mean_a = cv2.boxFilter(a, cv2.CV_64F, (r, r))
+        mean_b = cv2.boxFilter(b, cv2.CV_64F, (r, r))
+        
+        # Resultado refinado
+        q = mean_a * I + mean_b
+        return q
+
+    @staticmethod
+    def _dehaze_dcp(img, omega=0.95, window_size=15):
+        """
+        Dark Channel Prior MEJORADO con Guided Filter.
+        Elimina el efecto de bloques cuadrados.
+        """
+        if img is None: return None
+        
+        # Trabajar con float64 para precisión
+        I = img.astype('float64') / 255.0
+        
+        # 1. Calcular Dark Channel
+        min_channel = np.min(I, axis=2)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (window_size, window_size))
+        dark_channel = cv2.erode(min_channel, kernel)
+        
+        # 2. Estimar Luz Atmosférica (A)
+        num_pixels = dark_channel.size
+        # Usamos el 0.1% más brillante para estimar la luz ambiental
+        num_brightest = int(max(num_pixels * 0.001, 1))
+        indices = np.argpartition(dark_channel.ravel(), -num_brightest)[-num_brightest:]
+        
+        flat_I = I.reshape(num_pixels, 3)
+        # Promediamos los candidatos para ser más robustos ante 'pixels quemados'
+        A = np.mean(flat_I[indices], axis=0)
+        
+        # Evitar A demasiado bajo (división por cero) o demasiado alto (saturación)
+        # Para agua, a veces conviene forzar A a ser un poco azulado/verdoso si falla,
+        # pero el automático suele ir bien.
+        A = np.maximum(A, 0.05) 
+
+        # 3. Calcular Transmisión Ruda (t_raw)
+        # Normalizamos por A canal a canal
+        norm_I = I / A
+        min_channel_norm = np.min(norm_I, axis=2)
+        dark_channel_norm = cv2.erode(min_channel_norm, kernel)
+        
+        t_raw = 1 - omega * dark_channel_norm
+        
+        # 4. REFINAR TRANSMISIÓN (Guided Filter) - AQUÍ SE ARREGLAN LOS CUADRADOS
+        # Usamos la versión en gris de la imagen original como guía
+        gray_guide = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype('float64') / 255.0
+        
+        # Radio grande (ej: 8 veces la ventana) para suavizar bien
+        t_refined = ImageProcessor._guided_filter(gray_guide, t_raw, r=window_size*4, eps=1e-3)
+        
+        # Limitar t para evitar ruido extremo (0.1 es un buen límite inferior)
+        t_refined = np.maximum(t_refined, 0.1)
+        
+        # 5. Recuperar Escena (J)
+        t_3c = np.repeat(t_refined[:, :, np.newaxis], 3, axis=2)
+        J = (I - A) / t_3c + A
+        
+        # Clip seguro
+        return np.clip(J * 255, 0, 255).astype(np.uint8)
+    
     def visualize_and_save(self, window_name="Preview", wait_time=0, save_folder=None, frame_id=""):
         """
         Muestra la comparación: Original (Redimensionada) vs Procesada (Real).
