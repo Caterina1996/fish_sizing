@@ -4,9 +4,8 @@ import numpy as np
 import cv2
 import os
 class Fish2D:
-    def __init__(self, frame_id, color_id, fish_class,model_classes_dict,
+    def __init__(self, frame_id, color_id, fish_class,model_classes_dict,mask, bbox,
                  class_colours_dict,model_used="unknown_yolo",track_id=None, 
-                 mask, bbox,
                  in_image_borders=False,debug_path=""):
         
         self.fish_frame = frame_id
@@ -321,51 +320,7 @@ class FrameScene:
 
         return frame_info
     
-# class BagfileFishInfo:
-#     def __init__(self, class_names):
-#         self.frame_scenes = []
-#         self.bagfile_detection_count = dict.fromkeys(class_names, 0)
-#         self.bagfile_detection_count["Total_detections"] = 0
 
-#     def add_frame_scene(self, frame_scene: FrameScene):
-#         self.frame_scenes.append(frame_scene)
-#         counts = frame_scene.get_detection_counts()
-#         for cls, cnt in counts.items():
-#             if cls not in ["FrameId", "Num_detections"]:
-#                 self.bagfile_detection_count[cls] += cnt
-#         self.bagfile_detection_count["Total_detections"] += counts["Num_detections"]
-
-#     def save_frame_csv(self, path):
-#         header_written = False
-#         for scene in self.frame_scenes:
-#             frame_info = scene.get_detection_counts()
-#             mode = 'w' if not header_written else 'a'
-#             with open(path, mode, newline='') as csvfile:
-#                 writer = csv.DictWriter(csvfile, fieldnames=frame_info.keys())
-#                 if not header_written:
-#                     writer.writeheader()
-#                     header_written = True
-#                 writer.writerow(frame_info)
-
-#     def save_bagfile_csv(self, path):
-#         with open(path, 'w', newline='') as csvfile:
-#             writer = csv.DictWriter(csvfile, fieldnames=["Class", "Total Count"])
-#             writer.writeheader()
-#             for k, v in self.bagfile_detection_count.items():
-#                 writer.writerow({"Class": k, "Total Count": v})
-    
-#     def add_fish_placeholder(self, fish_2d):
-#         self.fish_data.append({
-#             "frame_id": fish_2d.frame_id,
-#             "track_id": fish_2d.track_id,
-#             "class_name": fish_2d.class_name,
-#             "is_3d_complete": fish_2d.is_3d_complete,
-#             "in_image_borders": fish_2d.in_image_borders,
-#             "length": None,
-#             "filtered_length": None,
-#             "distance_camera": None,
-#             "pc_exists": False
-#         })
 
 
 

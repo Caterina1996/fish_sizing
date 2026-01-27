@@ -1,0 +1,37 @@
+
+docker exec -it fish_3d-fish_sizing bash
+
+"source /opt/ros/noetic/setup.bash && "
+            "source /home/rosuser/repo/src/DL_utils/ros_dl_ws/devel/setup.bash && "
+
+
+# Per tornar a montar un contenidor
+docker compose build *imatge*
+
+docker compose build --no-cache
+
+docker compose up -d
+
+
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+
+# Configure Docker to use the NVIDIA runtime
+sudo nvidia-ctk runtime configure --runtime=docker
+
+# Restart Docker
+sudo systemctl restart docker
+
+
+check cuda:
+
+python3 -c "import torch; print(torch.version.cuda)"
+python3 -c "import torch; print(torch.cuda.get_device_name(0))"
+
+python3 -c "import ultralytics"
+
+
+python3 test.py --model_path crestereo_eth3d.mge --left img/test_cat/left.jpg --right img/test/right.jpg --size 1024x768 --output disparity.png
+
+# Per entrar com a root a un docker:
+docker exec -u 0 -it ea03b90b96b7 bash

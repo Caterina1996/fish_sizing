@@ -6,8 +6,8 @@ import os
 import cloudpickle as pickle
 from termcolor import cprint
 
-from fish_detector import FishDetector
-from fish2D import Fish2D, FrameScene 
+from fish_detector.detection.fish_detector import FishDetector
+from ish_detector.detection.fish2D import Fish2D, FrameScene 
 
 # ==========================================
 # 1. CONFIGURACIÓN

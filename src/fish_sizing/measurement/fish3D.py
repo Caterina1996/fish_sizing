@@ -2,15 +2,18 @@ import numpy as np
 import open3d as o3d
 from sklearn.decomposition import PCA
 from scipy import stats
-import utils
+
 import os
 from termcolor import colored
 from pyntcloud import PyntCloud
-from fish2D  import Fish2D
+
 import cloudpickle as pickle
 from sklearn.cluster import DBSCAN
 import hdbscan
 import collections
+
+from fish_sizing.utils import tools
+from fish_detector.detection.fish2D import Fish2D 
 
 class Fish3D(Fish2D):
     def __init__(self, fish2d, pointcloud_raw, base_path):
@@ -80,8 +83,8 @@ class Fish3D(Fish2D):
         if filtered:
             # --- VISUALIZE ---
             if plot_fish_direction and fish_length>0:
-                # utils.plot_fish_with_dual_cameras(points, fish_direction, fish_length, color_id,self.base_path)
-                utils.plot_fish_with_dual_cameras_plotly(points, fish_direction, fish_length, self.color_id, self.base_path)
+                # tools.plot_fish_with_dual_cameras(points, fish_direction, fish_length, color_id,self.base_path)
+                tools.plot_fish_with_dual_cameras_plotly(points, fish_direction, fish_length, self.color_id, self.base_path)
         
             self.filtered_fish_direction = fish_direction
             self.filtered_length = fish_length
@@ -111,7 +114,7 @@ class Fish3D(Fish2D):
             })
             return False
         
-        pcd = utils.create_pointcloud(pc)
+        pcd = tools.create_pointcloud(pc)
         if filtered:
             save_path = os.path.join(self.pointcloud_dir,"object_"+str(self.color_id)+"_filtered.ply")
         else:

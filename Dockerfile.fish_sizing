@@ -1,0 +1,102 @@
+FROM nvidia/cuda:12.1.0-devel-ubuntu20.04
+
+ARG UID=1000
+ARG GID=1000
+ENV DEBIAN_FRONTEND=noninteractive
+
+USER root
+
+# -------------------------------------------------------------------
+# 🐍 1. Install Basic System Dependencies & Python 3.9 PPA
+# -------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    gpg-agent \
+    curl \
+    ca-certificates \
+    gnupg \
+    lsb-release
+
+# Add Deadsnakes PPA (for Python 3.9)
+RUN add-apt-repository ppa:deadsnakes/ppa -y || \
+    (apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys F23C5A6CF475977595C63F25A4B2F903F3597949 && \
+     add-apt-repository ppa:deadsnakes/ppa -y)
+
+# -------------------------------------------------------------------
+# 👤 2. Create rosuser (EARLY creation so home dir exists)
+# -------------------------------------------------------------------
+RUN groupadd -g ${GID} rosuser && \
+    useradd -m -u ${UID} -g ${GID} -s /bin/bash rosuser && \
+    chown -R ${UID}:${GID} /home/rosuser
+
+# -------------------------------------------------------------------
+# 🤖 3. Install ROS Noetic (Minimal) & Python 3.9
+# -------------------------------------------------------------------
+RUN sh -c 'echo "deb http://packages.ros.org/ros/ubuntu focal main" > /etc/apt/sources.list.d/ros-latest.list' && \
+    curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | apt-key add - && \
+    apt-get update && apt-get install -y \
+    # ROS Base
+    ros-noetic-ros-base \
+    python3-rosbag \
+    # Python 3.9 and Utils
+    python3.9 python3.9-venv python3.9-distutils python3.9-dev python3.9-lib2to3 \
+    python3-pip \
+    # Graphics Libs
+    libgl1-mesa-glx libglib2.0-0 \
+    ffmpeg libsm6 libxext6 \
+    libxcb-xinerama0 libxcb-cursor0 libx11-xcb1 libqt5x11extras5 && \
+    rm -rf /var/lib/apt/lists/*
+
+# NOW this works because /home/rosuser exists
+RUN echo "source /opt/ros/noetic/setup.bash" >> /home/rosuser/.bashrc
+
+# -------------------------------------------------------------------
+# 🐳 4. Install Docker CLI inside container
+# -------------------------------------------------------------------
+RUN apt-get update && apt-get install -y \
+    apt-transport-https ca-certificates curl gnupg lsb-release && \
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu focal stable" > /etc/apt/sources.list.d/docker.list && \
+    apt-get update && apt-get install -y docker-ce-cli && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 998 docker || true && usermod -aG docker rosuser || true
+
+# -------------------------------------------------------------------
+# 📦 5. Install Python Global Dependencies (ROOT)
+# -------------------------------------------------------------------
+    RUN mkdir -p /var/lib/apt/lists/partial && chmod 755 /var/lib/apt/lists/partial && \
+    python3.9 -m pip install --upgrade pip && \
+    
+    # 1. BASE CRÍTICA: Instalamos NumPy y PyYAML PRIMERO forzando la instalación
+    # Esto evita el error "Cannot uninstall PyYAML/distutils"
+    python3.9 -m pip install "numpy==1.24.4" && \
+    python3.9 -m pip install --ignore-installed PyYAML && \
+
+    # 2. ROS BAGS (Con --ignore-installed para evitar conflicto con genpy del sistema)
+    python3.9 -m pip install --extra-index-url https://rospypi.github.io/simple/ --ignore-installed genpy rospy rosbag rospkg && \
+
+    # 3. PYTORCH (CUDA 12.1)
+    python3.9 -m pip install torch==2.1.0+cu121 torchvision==0.16.0+cu121 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121 && \
+    
+    # 4. ULTRALYTICS
+    python3.9 -m pip install ultralytics==8.3.0 lapx natsort cloudpickle requests termcolor && \
+
+    # 5. OPENCV CLEANUP
+    python3.9 -m pip uninstall opencv-python opencv-python-headless -y || true && \
+    python3.9 -m pip install "opencv-contrib-python==4.8.0.76" open3d && \
+
+    python3.9 -m pip cache purge
+
+# -------------------------------------------------------------------
+# 👤 6. User Setup & Requirements
+# -------------------------------------------------------------------
+USER rosuser
+ENV PATH=/home/rosuser/.local/bin:$PATH
+
+COPY requirements.txt /tmp/requirements_project.txt
+RUN python3.9 -m pip install -r /tmp/requirements_project.txt --no-cache-dir || echo "Warning: Requirements file had conflicts, relying on global libs."
+
+ENV PYTHONPATH="${PYTHONPATH}:/home/rosuser/repo/src"
+
+CMD ["/bin/bash"]

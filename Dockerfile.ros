@@ -1,0 +1,135 @@
+# Base ROS Noetic image with GPU support and development tools
+FROM mikweeh/ros:noetic-desktop-full@sha256:7dbfb9576d8e6d226c31e06129a82aaab8702695f38eca2116918cb9b9308797
+
+# Set build-time arguments for user and group IDs
+ARG UID=1000
+ARG GID=1000
+
+# Set environment variables for ROS development
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Etc/UTC \
+    ROS_WORKSPACE=/home/rosuser/repo/ \
+    QT_X11_NO_MITSHM=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+
+# RUN mkdir  ${ROS_WORKSPACE}/src/DL_utils/ros_dl_ws/ \
+#     chown -R $UID:$GID ${ROS_WORKSPACE}/ros_ws
+
+# Working directory
+WORKDIR ${ROS_WORKSPACE}/src/DL_utils/ros_dl_ws/
+
+# Install system dependencies for ROS development and GPU support
+RUN apt-get update && apt-get install -y \
+    # Python development tools
+    python3-pip \
+    python3-dev \
+    # Tkinter support for matplotlib GUI backends
+    python3-tk \
+    tcl-dev \
+    tk-dev \
+    # Additional Python GUI libraries
+    libtcl8.6 \
+    libtk8.6 \
+    tk \
+    # X11 and Qt libraries for GUI applications
+    libx11-xcb1 libxcb1 libxcb-glx0 \
+    libxcb-keysyms1 libxcb-image0 libxcb-shm0 libxcb-icccm4 \
+    libxcb-sync1 libxcb-xfixes0 libxcb-shape0 libxcb-randr0 \
+    libxcb-render-util0 libxcb-render0 libxcb-xinerama0 \
+    libxcb-xkb1 libxkbcommon-x11-0 \
+    libsm6 libgl1-mesa-glx qt5-default \
+    # X11 forwarding utilities
+    x11-xserver-utils xauth x11-apps \
+    # Development tools
+    git vim nano \
+    build-essential \
+    # Graphics and vision libraries (matching python container)
+    libgl1-mesa-glx libglib2.0-0 \
+    # Image metadata library
+    libexiv2-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install catkin-tools for workspace management
+RUN apt-get update && apt-get install -y \
+    python3-catkin-tools \
+    python3-osrf-pycommon \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+ 
+# Install rosbridge for web/external communication
+RUN apt-get update && apt-get install -y \
+    ros-noetic-rosbridge-suite \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Spinnaker SDK dependencies
+RUN apt-get update && apt-get install -y \
+    # Core dependencies for Ubuntu 20.04
+    libusb-1.0-0 \
+    # Video recording dependencies  
+    libavcodec58 \
+    libavformat58 \
+    libswscale5 \
+    libswresample3 \
+    libavutil56 \
+    # SpinView GUI dependencies
+    qt5-default \
+    # Network tools
+    ethtool \
+    # Additional utilities
+    lsb-release \
+    iputils-ping \
+    # Required for debconf configuration
+    debconf-utils \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python requirements for ROS (will be used during project build)
+COPY requirements_py38.txt /tmp/requirements_py38.txt
+
+# Create user with specified UID/GID and setup workspace
+RUN if getent group $GID >/dev/null; then \
+        existing_group=$(getent group $GID | cut -d: -f1); \
+        useradd -m -u $UID -g $existing_group -s /bin/bash rosuser; \
+    else \
+        groupadd -g $GID rosuser && \
+        useradd -m -u $UID -g $GID -s /bin/bash rosuser; \
+    fi
+
+# Setup workspace and permissions
+RUN mkdir -p $ROS_WORKSPACE $ROS_WORKSPACE/dataset && \
+    chown -R $UID:$GID /home/rosuser
+
+# Create Xauthority file for X11 forwarding
+RUN touch /tmp/.docker.xauth && \
+    chmod 777 /tmp/.docker.xauth && \
+    chown $UID:$GID /tmp/.docker.xauth
+
+# Switch to non-root user
+USER rosuser
+
+# Install base Python dependencies for ROS development
+RUN python3 -m pip install --user -r /tmp/requirements_py38.txt
+
+# Setup ROS environment in bashrc with matplotlib backend
+RUN echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc && \
+    echo "export PATH=\$PATH:/home/rosuser/.local/bin" >> ~/.bashrc && \
+    echo "export MPLBACKEND=TkAgg" >> ~/.bashrc
+
+# Verify tkinter installation and matplotlib backend
+RUN python3 -c "import tkinter; print('Tkinter installed successfully')" && \
+    python3 -c "import matplotlib; matplotlib.use('TkAgg'); \
+                print(f'Matplotlib backend: {matplotlib.get_backend()}')"
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+USER root
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+USER rosuser
+
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["/bin/bash"]
