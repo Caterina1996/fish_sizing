@@ -13,7 +13,7 @@ from fish_sizing.utils.image_processor import ImageProcessor
 
 # --- CONFIGURACIÓN ---
 PATH_MAPPINGS = {
-    "/home/slimbook/bagfiles": "/home/rosuser/repo/dataset/bagfiles",
+    "/home/slimbook/bagfiles": "/home/rosuser/dataset/bagfiles",
     "/home/slimbook/fish_sizing/out": "/home/rosuser/repo/out",
     # "/home/slimbook/fish_sizing": "/home/rosuser/repo/src/fish_sizing"
 }

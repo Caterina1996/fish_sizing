@@ -46,15 +46,28 @@ class Fish2D:
         length = -1
         ellipse = None
 
-        # Buscar contornos del objeto
-        contours, _ = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        # --- FIX: Conversión obligatoria a UINT8 para findContours ---
+        # Si la imagen es float (disparidad), la convertimos.
+        # Si los valores son 0-1 (mascara), escalamos a 0-255.
+        image_u8 = image.copy()
+        if image.dtype != np.uint8:
+             # Si es disparidad float, binarizamos lo que sea mayor que 0
+             image_u8 = (image > 0).astype(np.uint8) * 255
+        elif image.max() <= 1:
+             # Si es mascara binaria 0-1, pasar a 0-255
+             image_u8 = (image * 255).astype(np.uint8)
+
+        # Buscar contornos del objeto (usando la imagen corregida image_u8)
+        contours, _ = cv2.findContours(image_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Para debug usamos una copia a color
+        image_rgb = cv2.cvtColor(image_u8, cv2.COLOR_GRAY2RGB)
 
         if contours:
             # Combinar contornos en uno solo
             contour = np.concatenate(contours)
 
-            if self.debug_mode:
+            if self.debug_mode and self.debug_path: # Check extra de path
                 cv2.drawContours(image_rgb, contours, -1, (0, 255, 0), thickness=1)
                 cv2.imwrite(
                     os.path.join(self.debug_path, f"{self.fish_frame}_object{object_id}_contours_{disp_or_mask}.png"),
@@ -65,27 +78,29 @@ class Fish2D:
                 try:
                     # Ajustar elipse sobre la envolvente convexa
                     hull = cv2.convexHull(contour).reshape(-1, 1, 2)
-                    ellipse = cv2.fitEllipse(hull)
-                    length = max(ellipse[1])  # Eje mayor
+                    # Necesitamos al menos 5 puntos para fitEllipse
+                    if hull.shape[0] >= 5:
+                        ellipse = cv2.fitEllipse(hull)
+                        length = max(ellipse[1])  # Eje mayor
 
-                    if self.debug_mode:
-                        cv2.polylines(image_rgb, [hull], isClosed=True, color=(255, 0, 0), thickness=2)
-                        cv2.ellipse(image_rgb, ellipse, (0, 0, 255), 2)
-                        cv2.imwrite(
-                            os.path.join(self.debug_path, f"{self.fish_frame}_object{object_id}_ellipse_{disp_or_mask}.png"),
-                            image_rgb
-                        )
-
+                        if self.debug_mode and self.debug_path:
+                            cv2.polylines(image_rgb, [hull], isClosed=True, color=(255, 0, 0), thickness=2)
+                            cv2.ellipse(image_rgb, ellipse, (0, 0, 255), 2)
+                            cv2.imwrite(
+                                os.path.join(self.debug_path, f"{self.fish_frame}_object{object_id}_ellipse_{disp_or_mask}.png"),
+                                image_rgb
+                            )
                 except Exception as e:
                     print(f"[WARN] Error al ajustar la elipse para el objeto {object_id}: {e}")
             else:
+
                 print(f"[WARN] Contorno demasiado pequeño para el objeto {object_id} (puntos: {len(contour)})")
         else:
             print(f"[WARN] No se encontraron contornos para el objeto {object_id}")
 
         return length, ellipse
 
-    def is_complete(self, disp_img, mask_img, debug_path="", debug_mode=True):
+    def is_complete(self, disp_img, debug_path="", debug_mode=True):
         """
         Evalúa si un pez detectado está completo en base a su máscara y la imagen de disparidad.
 
@@ -108,21 +123,24 @@ class Fish2D:
         
         try:
             # Comprobación de entrada
-            if disp_img.shape != mask_img.shape:
+            if disp_img.shape[:2] != mask_img.shape[:2]: # Miramos solo H,W por si acaso disp tiene canales
                 print("disp_img.shape:", disp_img.shape)
                 print("mask_img.shape:", mask_img.shape)
                 raise ValueError("`disp_img` y `mask_img` deben tener la misma forma.")
 
             # Multiplica máscara por disparidad para aislar el objeto
+            # disp_img suele ser float, asi que disp_of_object será float
             disp_of_object = mask_img * disp_img
 
             # Cálculo de IoU
             iou = self.get_IoU_disp_object_id(mask_img, disp_of_object)
 
             # Visualización
-            object_img_color = cv2.cvtColor(mask_img, cv2.COLOR_GRAY2RGB)
+            # Conversión segura para visualización
+            object_img_color = cv2.cvtColor((mask_img*255).astype(np.uint8), cv2.COLOR_GRAY2RGB)
 
             # Obtener longitudes de las ellipses que contienen cada mascara
+            # find_mask_length ahora maneja la conversion float->uint8 internamente
             length_disp, ellipse_disp = self.find_mask_length(disp_of_object, self.color_id, "DISPARITY")
             length_mask, ellipse_mask = self.find_mask_length(mask_img, self.color_id, "MASK")
 
@@ -137,11 +155,11 @@ class Fish2D:
                 os.makedirs(debug_path, exist_ok=True)
                 prefix = f"{self.fish_frame}_object_{self.color_id}"
                 
-                mask_and_disp = (disp_img * 255.0).astype(np.uint8) - ((mask_img // 255) * 100)
+                # Normalizamos disp para verla (porque en float los valores son pequeños para 0-255 o grandes)
+                disp_vis = cv2.normalize(disp_of_object, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
                 
-                cv2.imwrite(os.path.join(debug_path, f"{prefix}_disp.png"), disp_of_object)
-                cv2.imwrite(os.path.join(debug_path, f"{prefix}_mask.png"), mask_img)
-                cv2.imwrite(os.path.join(debug_path, f"{prefix}_mask_and_disp.png"), mask_and_disp)
+                cv2.imwrite(os.path.join(debug_path, f"{prefix}_disp.png"), disp_vis)
+                cv2.imwrite(os.path.join(debug_path, f"{prefix}_mask.png"), (mask_img*255).astype(np.uint8))
                 cv2.imwrite(os.path.join(debug_path, f"{prefix}_ellipses.png"), object_img_color)
                 
                 print(f"IoU for {prefix}: {iou:.3f}")
@@ -166,52 +184,14 @@ class Fish2D:
             print(f"❗ Error en is_complete: {e}")
             self.is_3d_complete = -1
 
-    
-    def to_ros_msg(self):
-        from stereo_plome.msg import FrameScene as FrameSceneMsg
-        from stereo_plome.msg import Fish2D as Fish2DMsg
-        from sensor_msgs.msg import Image
-        from cv_bridge import CvBridge
-        msg = Fish2DMsg()
-        msg.fish_frame = self.fish_frame
-        msg.color_id = self.color_id
-        msg.track_id = self.track_id 
-        msg.class_name = self.class_name
-        msg.in_image_borders = self.in_image_borders
-        msg.model_used = self.model_used
-        msg.model_classes_keys = list(self.model_classes_dict.keys())
-        msg.model_classes_values = list(self.model_classes_dict.values())
-        msg.class_colours_keys = list(self.class_colours_dict.keys())
-        msg.class_colours_values = list(self.class_colours_dict.values())
-        return msg
-
-    @classmethod
-    def from_ros_msg(cls, msg):
-        from stereo_plome.msg import FrameScene as FrameSceneMsg
-        from stereo_plome.msg import Fish2D as Fish2DMsg
-        from sensor_msgs.msg import Image
-        from cv_bridge import CvBridge
-        
-        model_classes_dict = dict(zip(msg.model_classes_keys, msg.model_classes_values))
-        class_colours_dict = dict(zip(msg.class_colours_keys, msg.class_colours_values))
-        return cls(
-            frame_id=msg.fish_frame,
-            color_id=msg.color_id,
-            track_id=msg.track_id,
-            fish_class=msg.class_name,
-            model_classes_dict=model_classes_dict,
-            class_colours_dict=class_colours_dict,
-            model_used=msg.model_used,
-            in_image_borders=msg.in_image_borders
-        )
-        
     def __str__(self):
         return f"[Fish] {self.class_name} (ID: {self.color_id}, Track: {self.track_id})"
 
                 
 class FrameScene:
-    def __init__(self, frame_name: str, object_ids_mask, fish_list, disparity_img, save_path, class_ids_img=None):
+    def __init__(self, frame_name: str,img_size, object_ids_mask, fish_list, disparity_img, save_path, class_ids_img=None):
         self.frame_name = frame_name
+        self.img_size = img_size
         self.class_ids_img = class_ids_img # (Img) Each fish class is identified with a different colour in the mask
         self.object_ids_mask = object_ids_mask # (Img) Each fish object has a different color id that serves as object id
         self.fish_list = fish_list
@@ -272,6 +252,41 @@ class FrameScene:
         objects = set(self.object_ids_mask.flatten())
         print("I found ", len(objects), " objects")
     
+    
+        
+    def to_ros_msg(self):
+        from stereo_plome.msg import FrameScene as FrameSceneMsg
+        from stereo_plome.msg import Fish2D as Fish2DMsg
+        from sensor_msgs.msg import Image
+        from cv_bridge import CvBridge
+
+        bridge = CvBridge()
+        msg = FrameSceneMsg()
+        msg.frame_name = self.frame_name
+        msg.object_ids_mask = bridge.cv2_to_imgmsg(self.object_ids_mask, encoding="passthrough")
+        msg.class_ids_img = bridge.cv2_to_imgmsg(self.class_ids_img, encoding="passthrough") if self.class_ids_img is not None else Image()
+        msg.fish_list = [fish.to_ros_msg() for fish in self.fish_list]
+        return msg
+
+    @classmethod
+    def from_ros_msg(cls, msg):
+        from stereo_plome.msg import FrameScene as FrameSceneMsg
+        from stereo_plome.msg import Fish2D as Fish2DMsg
+        from sensor_msgs.msg import Image
+        from cv_bridge import CvBridge
+
+        bridge = CvBridge()
+        object_ids_mask = bridge.imgmsg_to_cv2(msg.object_ids_mask, desired_encoding="passthrough")
+        class_ids_img = bridge.imgmsg_to_cv2(msg.class_ids_img, desired_encoding="passthrough") if msg.class_ids_img.data else None
+        fish_list = [Fish2D.from_ros_msg(fm) for fm in msg.fish_list]
+        disparity_img = np.zeros_like(object_ids_mask)  # o recuperar si se transmite en el mensaje ROS
+        return cls(msg.frame_name, object_ids_mask, fish_list, disparity_img, class_ids_img)
+
+    def __str__(self):
+        fish_strings = "\n".join(str(fish) for fish in self.fish_list)
+        return f"[Scene] {self.frame_name} with {len(self.fish_list)} fish:\n{fish_strings}"
+                    
+                    
         
     def to_ros_msg(self):
         from stereo_plome.msg import FrameScene as FrameSceneMsg
@@ -320,6 +335,53 @@ class FrameScene:
 
         return frame_info
     
+    def get_optimization_strips(self, min_margin=32, force_full_threshold=0.80):
+        """
+        Calcula las franjas horizontales óptimas para las
+        que calcularemos disparidad basándose en los peces de esta escena.
+        """
+        img_h = self.img_size[0]
+        bboxes = [f.bbox for f in self.fish_list]
+        
+        if not bboxes:
+            return []
+
+        # 1. Extraer coordenadas verticales (y1, y2) con margen
+        intervals = []
+        for box in bboxes:
+            y1, y2 = int(box[1]), int(box[3])
+            y1 = max(0, y1 - min_margin)
+            y2 = min(img_h, y2 + min_margin)
+            intervals.append((y1, y2))
+
+        # 2. Ordenar y Fusionar (Merge intervals)
+        intervals.sort(key=lambda x: x[0])
+        
+        merged = []
+        if intervals:
+            curr_y1, curr_y2 = intervals[0]
+            for next_y1, next_y2 in intervals[1:]:
+                if next_y1 < curr_y2: # Solapamiento -> Extender
+                    curr_y2 = max(curr_y2, next_y2)
+                else: # Nuevo intervalo
+                    merged.append((curr_y1, curr_y2))
+                    curr_y1, curr_y2 = next_y1, next_y2
+            merged.append((curr_y1, curr_y2))
+
+        # 3. Decisión: ¿Ratio de ocupación?
+        total_height = sum(y2 - y1 for y1, y2 in merged)
+        coverage_ratio = total_height / float(img_h)
+
+        if coverage_ratio > force_full_threshold:
+            # print(f"   -> Modo FULL (Ocupación {coverage_ratio:.1%})")
+            return [(0, img_h)]
+        
+        return merged
+        
+        
+    def __str__(self):
+        fish_strings = "\n".join(str(fish) for fish in self.fish_list)
+        return f"[Scene] {self.frame_name} with {len(self.fish_list)} fish:\n{fish_strings}"
 
 
 

@@ -27,7 +27,6 @@ def load_json_dict(dict_path):
 
     return json_dict
 
-# CHECK 3D of FISH:
 def find_mask_length(self, image, object_id,disp_or_mask="disp"):
 
     length=-1
@@ -74,7 +73,7 @@ def find_mask_length(self, image, object_id,disp_or_mask="disp"):
 
     return length, ellipse
 
-# POINTCLOUD UTILS #############################################################3333333
+################# POINTCLOUD UTILS #############################################################3333333
 
 def create_pointcloud(sub_pointcloud):
     """Create an Open3D PointCloud from a N x 4 array (x, y, z, intensity)."""
@@ -117,7 +116,7 @@ def read_fish_scene_pc(pc_file):
     
     return pointcloud_info,object_ids_array
 
-
+############# VISUALIZATION TOOLS ###############################################################
 def draw_camera(ax, origin, direction, cone_height=0.05, cone_radius=0.02, color='black'):
     n = 20
     theta = np.linspace(0, 2 * np.pi, n)
@@ -130,36 +129,6 @@ def draw_camera(ax, origin, direction, cone_height=0.05, cone_radius=0.02, color
     cone = Poly3DCollection(faces, color=color, alpha=0.5)
     ax.add_collection3d(cone)
     ax.scatter(*origin, color=color, s=30)
-
-# def plot_fish_with_dual_cameras(points, direction, length, object_id,out_path):
-#     fig = plt.figure(figsize=(10, 8))
-#     ax = fig.add_subplot(111, projection='3d')
-#     centroid = np.mean(points, axis=0)
-
-#     ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=1, alpha=0.6, label=f"Fish {object_id}")
-#     ax.quiver(*centroid, *direction, length=length, color='red', label='Direction')
-
-#     draw_camera(ax, left_cam_pos, cam_dir, color='blue')
-#     draw_camera(ax, right_cam_pos, cam_dir, color='green')
-
-#     ax.quiver(0, 0, 0, 1, 0, 0, color='cyan', length=0.1, normalize=True, label='X')
-#     ax.quiver(0, 0, 0, 0, 1, 0, color='magenta', length=0.1, normalize=True, label='Y')
-#     ax.quiver(0, 0, 0, 0, 0, 1, color='yellow', length=0.1, normalize=True, label='Z')
-
-#     ax.set_title(f"Fish {object_id} with Stereo Camera Setup")
-#     ax.set_xlabel("X")
-#     ax.set_ylabel("Y")
-#     ax.set_zlabel("Z")
-#     ax.legend()
-#     plt.tight_layout()
-
-#     # Save
-#     out_dir = os.path.join(out_path,"results/visualizations")
-#     os.makedirs(out_dir, exist_ok=True)
-#     fig_path = os.path.join(out_dir, f"fish_{object_id}.png")
-#     plt.savefig(fig_path, dpi=300)
-#     plt.close()
-#     return fig_path
 
 
 def add_arrow(fig, start, direction, color, name, scale=1.0):

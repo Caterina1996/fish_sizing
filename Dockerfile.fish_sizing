@@ -83,8 +83,8 @@ RUN groupadd -g 998 docker || true && usermod -aG docker rosuser || true
     python3.9 -m pip install ultralytics==8.3.0 lapx natsort cloudpickle requests termcolor && \
 
     # 5. OPENCV CLEANUP
-    python3.9 -m pip uninstall opencv-python opencv-python-headless -y || true && \
-    python3.9 -m pip install "opencv-contrib-python==4.8.0.76" open3d && \
+    # python3.9 -m pip uninstall opencv-python opencv-python-headless -y || true && \
+    # python3.9 -m pip install "opencv-contrib-python==4.8.0.76" open3d && \
 
     python3.9 -m pip cache purge
 

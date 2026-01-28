@@ -4,7 +4,8 @@ import numpy as np
 import pickle
 from ultralytics import YOLO
 from termcolor import colored
-from fish_detector.detection.fish2D import Fish2D, FrameScene 
+
+from fish_sizing.detection.fish2D import Fish2D, FrameScene 
 
 class FishDetector:
     def __init__(self, model_path, conf_thr=0.5, masks_folder="inferred", tracker="botsort.yaml"):
@@ -57,7 +58,6 @@ class FishDetector:
 
         frame_fish_list = []
         
-        # --- NUEVO: Mapa para localizar peces anteriores por su color_id ---
         fish_map = {} 
         
         no_object_mask = np.full( (len(self.fish_dict.keys()), h, w), 0)
@@ -196,6 +196,7 @@ class FishDetector:
             
             frame_scene = FrameScene(
                 frame_name = frame_id,
+                img_size = img.shape,
                 fish_list = frame_fish_list,
                 object_ids_mask = mask_id,
                 class_ids_img = mask_final,
@@ -213,9 +214,9 @@ class FishDetector:
                 
         else:
              # Retorno vacío si no hay máscaras
-             return FrameScene(frame_id, [], np.zeros((h,w)), None, None, ""), (None, None)
+             return False, FrameScene(frame_id, [], np.zeros((h,w)), None, None, "")
 
-        return frame_scene, (mask_final, mask_id)
+        return True, frame_scene
 
     def _save_debug_data(self, base_path, frame_id, class_mask, id_mask, track_mask):
         out_folder = os.path.join(base_path, self.masks_folder)
