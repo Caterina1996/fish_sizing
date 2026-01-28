@@ -100,9 +100,7 @@ def main():
     count = 0
     # Usamos stream_stereo_pairs porque necesitamos AMBAS imágenes para rectificar
     for timestamp, img_l_raw, img_r_raw in bag_proc.stream_stereo_pairs():
-        
-
-        
+          
         # A) Cargar el par nuevo en el procesador
         # (Asegúrate de haber corregido el typo 'selfleft' en image_processor.py)
         img_proc.set_image_pair(img_l_raw, img_r_raw)
@@ -113,7 +111,7 @@ def main():
         
         # 2. Reducir tamaño (Opcional, pero recomendado)
         img_proc.downsample(0.5)
-        img_proc.apply_dehaze(omega=0.85, window_size=15) #-> Revisar esto xq ahora mismo no va be/no interesa
+        img_proc.apply_dehaze(omega=0.85, window_size=15,stereo_consistency=True) #-> Revisar esto xq ahora mismo no va be/no interesa
         
         # # Opción SGBM Prep (Grayscale + CLAHE - Mejor para Stereo Matcher):
         # img_proc.convert_to_custom_grayscale(w_g=0.7, w_b=0.3, w_r=0.0)
@@ -122,6 +120,10 @@ def main():
         
         # C) Obtener resultados
         processed_l, processed_r = img_proc.get_processed()
+        
+        if count == 0: # Ejemplo: Verificar solo el primer frame
+            cprint("🛠️ Abriendo verificador de rectificación...", "yellow")
+            img_proc.check_rectification_interactive()
         
         # D) Guardar downsampled
         fname = f"{timestamp}"

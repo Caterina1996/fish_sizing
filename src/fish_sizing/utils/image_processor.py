@@ -185,17 +185,34 @@ class ImageProcessor:
             self.processed_right = self._clahe(self.processed_right)
         return self
     
-    def apply_dehaze(self, omega=0.90, window_size=15):
+    def apply_dehaze(self, omega=0.90, window_size=15, stereo_consistency=True):
         """
-        Aplica eliminación de neblina (Dehazing) usando Dark Channel Prior.
-        Omega: Cantidad de neblina a quitar (0.0 a 1.0). 
-               Para agua, mejor 0.8-0.9 para no oscurecer demasiado.
+        Aplica Dehazing.
+        Args:
+            stereo_consistency (bool): 
+                - True (Recomendado para 3D): Usa la 'A' de la izquierda para ambas. 
+                  Garantiza colores iguales.
+                - False (Debug/Visual): Calcula 'A' independientemente. 
+                  Puede que una quede más brillante que la otra.
         """
-        self.processed_left = self._dehaze_dcp(self.processed_left, omega, window_size)
+        # 1. Procesamos siempre la izquierda primero
+        # Obtenemos la imagen procesada y el valor A que calculó
+        self.processed_left, A_val_left = self._dehaze_dcp(
+            self.processed_left, omega, window_size, known_A=None
+        )
+        
+        # 2. Procesamos la derecha
         if self.is_stereo:
-            self.processed_right = self._dehaze_dcp(self.processed_right, omega, window_size)
+            # Si queremos consistencia, pasamos el A de la izquierda.
+            # Si NO queremos (False), pasamos None para que calcule el suyo propio.
+            A_to_use = A_val_left if stereo_consistency else None
+            
+            self.processed_right, _ = self._dehaze_dcp(
+                self.processed_right, omega, window_size, known_A=A_to_use
+            )
+            
         return self
-
+    
     @staticmethod
     def _guided_filter(I, p, r, eps):
         """
@@ -230,12 +247,14 @@ class ImageProcessor:
         return q
 
     @staticmethod
-    def _dehaze_dcp(img, omega=0.95, window_size=15):
+    def _dehaze_dcp(img, omega=0.95, window_size=15,known_A=None):
         """
-        Dark Channel Prior MEJORADO con Guided Filter.
-        Elimina el efecto de bloques cuadrados.
+        Dark Channel Prior MEJORADO con Guided Filter (para eliminar el efecto de bloques cuadrados)
+        Acepta un 'known_A' opcional para forzar el color ambiental.
+        Retorna (imagen_procesada, A_usado).
         """
-        if img is None: return None
+        
+        if img is None: return None, None
         
         # Trabajar con float64 para precisión
         I = img.astype('float64') / 255.0
@@ -246,19 +265,25 @@ class ImageProcessor:
         dark_channel = cv2.erode(min_channel, kernel)
         
         # 2. Estimar Luz Atmosférica (A)
-        num_pixels = dark_channel.size
-        # Usamos el 0.1% más brillante para estimar la luz ambiental
-        num_brightest = int(max(num_pixels * 0.001, 1))
-        indices = np.argpartition(dark_channel.ravel(), -num_brightest)[-num_brightest:]
-        
-        flat_I = I.reshape(num_pixels, 3)
-        # Promediamos los candidatos para ser más robustos ante 'pixels quemados'
-        A = np.mean(flat_I[indices], axis=0)
-        
-        # Evitar A demasiado bajo (división por cero) o demasiado alto (saturación)
-        # Para agua, a veces conviene forzar A a ser un poco azulado/verdoso si falla,
-        # pero el automático suele ir bien.
-        A = np.maximum(A, 0.05) 
+
+        if known_A is not None:
+            # Si nos dan A, lo usamos (para la cámara derecha)
+            A = known_A
+        else:
+            # Si no, lo calculamos (para la cámara izquierda)
+            num_pixels = dark_channel.size
+            # Usamos el 0.1% más brillante para estimar la luz ambiental
+            num_brightest = int(max(num_pixels * 0.001, 1))
+            indices = np.argpartition(dark_channel.ravel(), -num_brightest)[-num_brightest:]
+            
+            flat_I = I.reshape(num_pixels, 3)
+            # Promediamos los candidatos para ser más robustos ante 'pixels quemados'
+            A = np.mean(flat_I[indices], axis=0)
+            
+            # Evitar A demasiado bajo (división por cero) o demasiado alto (saturación)
+            # Para agua, a veces conviene forzar A a ser un poco azulado/verdoso si falla,
+            # pero el automático suele ir bien.
+            A = np.maximum(A, 0.05) 
 
         # 3. Calcular Transmisión Ruda (t_raw)
         # Normalizamos por A canal a canal
@@ -283,7 +308,8 @@ class ImageProcessor:
         J = (I - A) / t_3c + A
         
         # Clip seguro
-        return np.clip(J * 255, 0, 255).astype(np.uint8)
+        res = np.clip(J * 255, 0, 255).astype(np.uint8)
+        return res, A
     
     def visualize_and_save(self, window_name="Preview", wait_time=0, save_folder=None, frame_id=""):
         """
@@ -356,6 +382,122 @@ class ImageProcessor:
             cv2.imwrite(os.path.join(save_folder, fname_debug), combined_img)
 
         return self
+    
+    ## CHECK RECTIFICATION:
+    # -------------------------------------------------------------------------
+    # HERRAMIENTA INTERACTIVA DE VALIDACIÓN DE RECTIFICACIÓN
+    # -------------------------------------------------------------------------
+
+    def check_rectification_interactive(self):
+        """
+        Abre una ventana GUI interactiva para comprobar la rectificación.
+        Permite clicar en la imagen izquierda y derecha para medir el error vertical en píxeles.
+        Bloquea la ejecución hasta que se pulsa 'q'.
+        """
+        if not self.is_stereo:
+            print("❌ Error: Se necesitan dos imágenes para comprobar rectificación.")
+            return
+
+        print("--- MODO COMPROBACIÓN RECTIFICACIÓN ---")
+        print("1. Clic en un punto característico en la IZQUIERDA.")
+        print("2. Clic en el mismo punto en la DERECHA.")
+        print("3. La línea verde debe pasar por ambos.")
+        print("Pulsa 'q' para salir.")
+
+        # 1. Preparar la imagen combinada
+        # Convertimos a BGR para poder pintar colores (rojo/verde) aunque la imagen sea gris
+        img_l = self.processed_left
+        img_r = self.processed_right
+
+        if len(img_l.shape) == 2: img_l = cv2.cvtColor(img_l, cv2.COLOR_GRAY2BGR)
+        if len(img_r.shape) == 2: img_r = cv2.cvtColor(img_r, cv2.COLOR_GRAY2BGR)
+
+        # Unimos horizontalmente
+        self._vis_img = np.hstack((img_l, img_r))
+        self._vis_clone = self._vis_img.copy() # Copia limpia para borrar dibujos
+        
+        # Variables de estado para el callback
+        self._pt_left = None
+        self._pt_right = None
+        self._w_single = img_l.shape[1] # Ancho de una sola imagen
+
+        # 2. Configurar Ventana
+        window_name = 'Check Rectification (Press q to exit)'
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        
+        # Ajustar tamaño inicial (opcional, para que quepa en pantalla)
+        h, w = self._vis_img.shape[:2]
+        display_width = 1200
+        if w > display_width:
+            scale = display_width / w
+            cv2.resizeWindow(window_name, display_width, int(h * scale))
+
+        # 3. Asignar Callback
+        # Pasamos 'self' implícitamente porque es un método de instancia
+        cv2.setMouseCallback(window_name, self._rect_mouse_callback)
+
+        # 4. Bucle de visualización
+        while True:
+            cv2.imshow(window_name, self._vis_img)
+            key = cv2.waitKey(10) & 0xFF
+            if key == ord('q') or key == 27: # 'q' o ESC
+                break
+        
+        cv2.destroyWindow(window_name)
+        # Limpiamos variables temporales para liberar memoria
+        del self._vis_img
+        del self._vis_clone
+
+    def _rect_mouse_callback(self, event, x, y, flags, param):
+        """Callback interno para manejar los clics del ratón."""
+        if event == cv2.EVENT_LBUTTONDOWN:
+            # Restaurar imagen limpia para borrar líneas anteriores
+            self._vis_img = self._vis_clone.copy()
+
+            # Dibujar línea horizontal maestra (Nivel de rectificación)
+            # Cruza toda la pantalla a la altura Y del clic
+            cv2.line(self._vis_img, (0, y), (self._vis_img.shape[1], y), (0, 255, 0), 1)
+            
+            # Dibujar punto del clic
+            cv2.circle(self._vis_img, (x, y), 5, (0, 0, 255), -1)
+
+            # Lógica de detección de lado
+            if x < self._w_single:
+                self._pt_left = (x, y)
+                # print(f"Click IZQUIERDA: Y={y}")
+            else:
+                # Guardamos la coordenada relativa a la imagen derecha, 
+                # pero para el cálculo de error Y solo nos importa la Y absoluta, que es la misma.
+                self._pt_right = (x, y) 
+                # print(f"Click DERECHA:   Y={y}")
+
+            # Calcular error si tenemos los dos puntos
+            if self._pt_left is not None and self._pt_right is not None:
+                # El error es la diferencia de altura (Y)
+                y_left = self._pt_left[1]
+                y_right = self._pt_right[1]
+                diff = abs(y_left - y_right)
+                
+                msg = f"Error Vertical: {diff} px"
+                color_text = (0, 255, 0) # Verde por defecto
+                
+                if diff > 2: # Tolerancia de 1-2 píxeles es aceptable
+                    msg += " (MAL)"
+                    color_text = (0, 0, 255) # Rojo
+                else:
+                    msg += " (OK)"
+
+                # Escribir en pantalla (arriba a la izquierda)
+                cv2.putText(self._vis_img, msg, (30, 60), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 1.2, color_text, 3, cv2.LINE_AA)
+                
+                # Dibujar también el punto anterior para referencia
+                if x < self._w_single: # Si acabamos de clicar izq, pintamos el derecho viejo
+                     cv2.circle(self._vis_img, self._pt_right, 5, (0, 255, 255), -1)
+                else: # Si clicamos der, pintamos el izquierdo viejo
+                     cv2.circle(self._vis_img, self._pt_left, 5, (0, 255, 255), -1)
+
+            cv2.imshow('Check Rectification (Press q to exit)', self._vis_img)
     
     #-----------------------------------------------------------------------------------
     # CUSTOM PROCESSING FOR SARMIENTO DE GAMBOA IMAGES (FIRST CAMPAIGN)
