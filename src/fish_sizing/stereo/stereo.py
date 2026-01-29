@@ -1,4 +1,5 @@
-import cv2
+import sys
+import cv2 
 import numpy as np
 import yaml
 import os
@@ -91,7 +92,7 @@ class StereoVision:
         self.wls_filter.setSigmaColor(w_cfg['sigma'])
         self.has_wls = True
 
-    def compute_disparity(self, img_l, img_r, strips, use_wls=False, debug=False, debug_path=None):
+    def compute_disparity(self,frame_id ,img_l, img_r, strips, use_wls=False, debug=False, debug_path=None):
         """
         Calcula el mapa de disparidad.
         Args:
@@ -140,12 +141,16 @@ class StereoVision:
             # 4. Pegar en el mapa final
             full_map[y1:y2, :] = disp_float
             
+            
+            
             if debug or (debug_path is not None):
+                
+                disp_img_path = os.path.join(debug_path,frame_id+"_disparity.png")
                 self.visualize_disparity(
                     full_map, 
                     strips=strips, 
                     show=debug,          # Mostrar solo si debug=True
-                    save_path=debug_path # Guardar solo si hay ruta
+                    save_path=disp_img_path # Guardar solo si hay ruta
                 )
             
         return full_map

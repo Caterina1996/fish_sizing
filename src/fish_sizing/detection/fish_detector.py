@@ -178,11 +178,8 @@ class FishDetector:
                     model_used = self.model_path,
                     track_id = fish_track_id,
                     in_image_borders = in_image_borders,
-                    
-                    # Nuevos parámetros
                     does_overlap = current_does_overlap,
                     overlapping_ids = current_overlapping_ids,
-                    
                     debug_path = os.path.join(debug_path,"debug") if debug_path else ""
                 )
                 
@@ -208,7 +205,7 @@ class FishDetector:
                 self._save_debug_data(debug_path, frame_id, mask_final, mask_id, track_id_mask)
                 
             if save_obj and debug_path:
-                pkl_path = os.path.join(debug_path, self.masks_folder, frame_id + "_scene.pkl")
+                pkl_path = os.path.join(debug_path, self.masks_folder, str(frame_id) + "_scene.pkl")
                 os.makedirs(os.path.dirname(pkl_path), exist_ok=True)
                 frame_scene.save(pkl_path)
                 

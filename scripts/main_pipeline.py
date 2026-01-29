@@ -12,11 +12,27 @@ from fish_sizing.detection.fish2D import Fish2D, FrameScene  # pot ser aquest im
 from fish_sizing.stereo.stereo import StereoVision
 from fish_sizing.detection.fish_detector import  FishDetector
 
+# # 1. Definir la ruta "mala" de ROS
+# ros_path = '/opt/ros/noetic/lib/python3/dist-packages'
+
+# # 2. Si está en el path, la quitamos temporalmente
+# if ros_path in sys.path:
+#     sys.path.remove(ros_path)
+
+# # 3. AHORA importamos cv2 (Cogerá el de tu usuario ~/.local/...)
+# import cv2
+
+# # 4. (Opcional) Volvemos a meter la ruta de ROS por si necesitas 'rospy' luego
+# sys.path.append(ros_path)
+
+# # --- Resto de tus imports ---
+# import numpy as np
+
 # --- CONFIGURACIÓN ---
 PATH_MAPPINGS = {
-    "/home/slimbook/bagfiles": "/home/rosuser/repo/dataset/bagfiles",
+    "/home/slimbook/bagfiles": "/home/rosuser/dataset/bagfiles",
     "/home/slimbook/fish_sizing/out": "/home/rosuser/repo/out",
-    "/home/slimbook/models": "/home/rosuser/repo/dataset/models/",
+    "/home/slimbook/models": "/home/rosuser/dataset/models/",
     "home/slimbook/fish_sizing/config" :"/home/rosuser/repo/config/"
 }
 
@@ -117,7 +133,11 @@ def main():
     
         if count > 2:
             break
-          
+        
+        # frame name TODO: decidir si vull el timestamp o count per facilitat
+        fname = f"{timestamp}"
+        
+        
         # Load the stereo pair
         img_proc.set_image_pair(img_l_raw, img_r_raw)
         
@@ -147,14 +167,16 @@ def main():
             
             # Guardar processed
             # fname = f"{timestamp}"
-            fname = f"{timestamp}"
+
             cv2.imwrite(os.path.join(out_path, fname+"_left.png"), processed_l)
             cv2.imwrite(os.path.join(out_path, fname+"_right.png"), processed_r)
             
             # get strips for the calculation of the disparity
             strips = frame_scene.get_optimization_strips()
             
-            disparity_map = stereo.compute_disparity(img_l = processed_l, 
+            disparity_map = stereo.compute_disparity(
+                                    frame_id = fname,
+                                    img_l = processed_l, 
                                     img_r =processed_r, 
                                     strips = strips, 
                                     use_wls=False, 

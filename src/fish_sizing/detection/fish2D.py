@@ -5,8 +5,12 @@ import cv2
 import os
 class Fish2D:
     def __init__(self, frame_id, color_id, fish_class,model_classes_dict,mask, bbox,
-                 class_colours_dict,model_used="unknown_yolo",track_id=None, 
-                 in_image_borders=False,debug_path=""):
+                 class_colours_dict, does_overlap , overlapping_ids,
+                 model_used="unknown_yolo",track_id=None, 
+                 in_image_borders=False,
+                                     # Nuevos parámetros
+        
+                 debug_path=""):
         
         self.fish_frame = frame_id
         self.color_id = color_id  # object id (id in the frame)
@@ -16,7 +20,10 @@ class Fish2D:
         self.bbox = bbox # [x1,y1,x2,y2]
         self.mask = mask # binary mask (img bckgrnd with mask=1 for fish pixels)
         
-        self.in_image_borders = in_image_borders        
+        self.in_image_borders = in_image_borders      
+          
+        self.does_overlap = does_overlap        
+        self.overlapping_ids = overlapping_ids        
         
         self.model_used = model_used
         self.model_classes_dict = model_classes_dict

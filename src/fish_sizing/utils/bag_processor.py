@@ -4,7 +4,6 @@ import os
 from tqdm import tqdm
 
 import rosbag
-# from cv_bridge import CvBridge
 import cv2
 from typing import TypedDict, List, Dict, Any
 
