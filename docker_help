@@ -1,5 +1,10 @@
 
+
+pip install --user --force-reinstall --ignore-installed opencv-contrib-python==4.10.0.84
+
 docker exec -it fish_3d-fish_sizing bash
+
+docker run -it --gpus all
 
 "source /opt/ros/noetic/setup.bash && "
             "source /home/rosuser/repo/src/DL_utils/ros_dl_ws/devel/setup.bash && "

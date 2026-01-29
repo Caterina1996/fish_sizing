@@ -47,7 +47,7 @@ RUN sh -c 'echo "deb http://packages.ros.org/ros/ubuntu focal main" > /etc/apt/s
     libxcb-xinerama0 libxcb-cursor0 libx11-xcb1 libqt5x11extras5 && \
     rm -rf /var/lib/apt/lists/*
 
-# NOW this works because /home/rosuser exists
+# Add ros setup to bashrc
 RUN echo "source /opt/ros/noetic/setup.bash" >> /home/rosuser/.bashrc
 
 # -------------------------------------------------------------------
@@ -63,29 +63,31 @@ RUN apt-get update && apt-get install -y \
 RUN groupadd -g 998 docker || true && usermod -aG docker rosuser || true
 
 # -------------------------------------------------------------------
-# 📦 5. Install Python Global Dependencies (ROOT)
+# 📦 5. Install Python Global Dependencies (ROOT) - LA COMBINACIÓN DORADA
 # -------------------------------------------------------------------
-    RUN mkdir -p /var/lib/apt/lists/partial && chmod 755 /var/lib/apt/lists/partial && \
+RUN mkdir -p /var/lib/apt/lists/partial && chmod 755 /var/lib/apt/lists/partial && \
     python3.9 -m pip install --upgrade pip && \
     
-    # 1. BASE CRÍTICA: Instalamos NumPy y PyYAML PRIMERO forzando la instalación
-    # Esto evita el error "Cannot uninstall PyYAML/distutils"
-    python3.9 -m pip install "numpy==1.24.4" && \
+    # 1. BASE: Numpy 1.26.4 (Compatible con YOLO y OpenCV 4.10)
+    python3.9 -m pip install "numpy==1.26.4" && \
     python3.9 -m pip install --ignore-installed PyYAML && \
 
-    # 2. ROS BAGS (Con --ignore-installed para evitar conflicto con genpy del sistema)
+    # 2. ROS BAGS
     python3.9 -m pip install --extra-index-url https://rospypi.github.io/simple/ --ignore-installed genpy rospy rosbag rospkg && \
 
     # 3. PYTORCH (CUDA 12.1)
     python3.9 -m pip install torch==2.1.0+cu121 torchvision==0.16.0+cu121 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121 && \
     
-    # 4. ULTRALYTICS
-    python3.9 -m pip install ultralytics==8.3.0 lapx natsort cloudpickle requests termcolor && \
+    # 4. OPENCV CONTRIB (Versión compatible con Numpy 1.x) & OPEN3D
+    python3.9 -m pip uninstall opencv-python opencv-python-headless -y || true && \
+    python3.9 -m pip install "opencv-contrib-python==4.10.0.84" open3d && \
 
-    # 5. OPENCV CLEANUP
-    # python3.9 -m pip uninstall opencv-python opencv-python-headless -y || true && \
-    # python3.9 -m pip install "opencv-contrib-python==4.8.0.76" open3d && \
+    # 5. CIENCIA DE DATOS (Versiones que no chocan con Numpy 1.26)
+    python3.9 -m pip install "scipy==1.13.1" "scikit-learn==1.5.2" pandas && \
 
+    # 6. ULTRALYTICS & EXTRAS 3D
+    python3.9 -m pip install ultralytics==8.3.0 lapx natsort cloudpickle requests termcolor hdbscan pyntcloud && \
+    
     python3.9 -m pip cache purge
 
 # -------------------------------------------------------------------
@@ -95,7 +97,8 @@ USER rosuser
 ENV PATH=/home/rosuser/.local/bin:$PATH
 
 COPY requirements.txt /tmp/requirements_project.txt
-RUN python3.9 -m pip install -r /tmp/requirements_project.txt --no-cache-dir || echo "Warning: Requirements file had conflicts, relying on global libs."
+# Instalamos solo lo que falte, pero lo gordo ya está arriba
+RUN python3.9 -m pip install -r /tmp/requirements_project.txt --no-cache-dir || echo "Warning: Requirements file had minor conflicts, relying on global libs."
 
 ENV PYTHONPATH="${PYTHONPATH}:/home/rosuser/repo/src"
 

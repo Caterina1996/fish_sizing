@@ -1,9 +1,9 @@
 services:
   fish_sizing-dev:
-    container_name: ${PROJECT_NAME}-fish_sizing
+    container_name: ${PROJECT_NAME}-fish_sizing_u22
     build:
       context: .
-      dockerfile: Dockerfile.fish_sizing
+      dockerfile: Dockerfile.fish_sizing_ubuntu_22
       args:
         UID: ${UID:-1000}
         GID: ${GID:-1000}

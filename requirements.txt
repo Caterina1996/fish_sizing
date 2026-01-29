@@ -1,11 +1,1 @@
-# Check the current installed libraries before adding them here
-
 python-dotenv
-natsort
-requests
-termcolor
-cloudpickle
-
-
-
-
