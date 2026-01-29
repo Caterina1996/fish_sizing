@@ -84,6 +84,9 @@ def main():
     parser.add_argument("--stereo_config", type=str, default="/home/slimbook/fish_sizing/config/stereo_config.yaml", 
                         help="Path to the yaml with the config for the stereo matching alg")
     
+    parser.add_argument("--decimation", type=float, default=0.5, 
+                        help="reescale the images")
+    
     args = parser.parse_args()
     
     # 1. Transformar rutas para Docker
@@ -91,6 +94,7 @@ def main():
     out_path = transform_path2docker(args.out_path)
     model_path = transform_path2docker(args.model_path)
     stereo_config_path = transform_path2docker(args.stereo_config)
+    decimation = args.decimation
 
     if not os.path.exists(bag_file):
         cprint(f"❌ Error: El archivo bag no existe: {bag_file}", "red")
@@ -122,8 +126,8 @@ def main():
     
     fish_detector = FishDetector(model_path)
     
-    stereo = StereoVision(calibration_data=camera_info, config_path=stereo_config_path)
-
+    stereo = StereoVision(calibration_data=camera_info, config_path=stereo_config_path,scale=decimation)
+    
     # 5. Bucle de Procesamiento (Stereo Stream)
     cprint(f"🚀 Iniciando procesamiento y exportación a: {out_path}", "cyan")
     
@@ -148,7 +152,7 @@ def main():
             cprint("🛠️ Abriendo verificador de rectificación...", "yellow")
             img_proc.check_rectification_interactive()
         
-        img_proc.downsample(0.5)
+        img_proc.downsample(decimation)
                
         # 2. Look for fish in the scene
         any_fish, frame_scene = fish_detector.process_frame(img_proc.processed_left, 
@@ -179,19 +183,48 @@ def main():
                                     img_l = processed_l, 
                                     img_r =processed_r, 
                                     strips = strips, 
-                                    use_wls=False, 
-                                    debug=False, 
+                                    use_wls=True, 
+                                    debug=True, 
                                     debug_path = out_path)
     
             # Inyectar disparidad en la escena y validar peces
             frame_scene.disparity_image = disparity_map
             
-            # # Validar integridad 3D de cada pez
-            # for fish in frame_scene.fish_list:
-            #     fish.is_complete(disparity_map, debug_path=os.path.join(out_path, "debug"))
+            # E) REPROYECCIÓN 3D (Point Cloud)
+            # -----------------------------------------------------------
+            # 1. Reproyectar toda la imagen a XYZ
+            points_3d = stereo.reproject_to_3d(disparity_map)
             
-            # # E) Guardar Resultados
-            # frame_scene.save(os.path.join(out_path, f"{timestamp}_scene.pkl"))
+            # 2. Crear máscara combinada de todos los peces
+            # (Iteramos sobre los peces detectados para sumar sus máscaras)
+            combined_mask = np.zeros(disparity_map.shape, dtype=bool)
+            
+            # Añadimos píxeles con disparidad válida (filtro físico)
+            valid_disp_mask = (disparity_map > stereo.min_valid_disparity)
+            
+            # Si YOLO devolvió máscaras, las usamos para filtrar solo el pez
+            if frame_scene.fish_list:
+                for fish in frame_scene.fish_list:
+                    if fish.mask is not None:
+                        # Asegurar que es binaria y sumar
+                        combined_mask = combined_mask | (fish.mask > 0)
+                
+                # Máscara Final = (Donde hay pez) AND (Donde hay disparidad válida)
+                final_mask = combined_mask & valid_disp_mask
+            else:
+                # Si no hay máscaras (solo cajas), usamos toda la disparidad válida
+                final_mask = valid_disp_mask
+
+            # 3. Guardar Nube de Puntos (PLY)
+            ply_filename = os.path.join(out_path, f"{fname}_scene.ply")
+            stereo.save_point_cloud(
+                points_3d=points_3d, 
+                colors=processed_l, 
+                mask=final_mask, 
+                save_path=ply_filename, 
+                z_max=stereo.MAX_DEPTH_METERS
+            )
+
         
         else:
             cprint(f"No fish found in frame {count} :(, gonna process next image!","yellow")

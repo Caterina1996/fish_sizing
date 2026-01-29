@@ -3,74 +3,90 @@ import cv2
 import numpy as np
 import yaml
 import os
-from termcolor import cprint
+import open3d as o3d 
 
 class StereoVision:
-    # Configuración por defecto (Fallback si no hay YAML)
+    # Configuración por defecto
     DEFAULT_CONFIG = {
         "stereo": {
             "min_disparity": 0,
-            "num_disparities": 128, # Debe ser divisible por 16
+            "num_disparities": 128,
             "block_size": 5,
-            "p1_factor": 8,   # P1 = 8 * 3 * block_size^2
-            "p2_factor": 32,  # P2 = 32 * 3 * block_size^2
+            "p1_factor": 8,
+            "p2_factor": 32,
             "disp12_max_diff": 1,
             "uniqueness_ratio": 10,
             "speckle_window_size": 100,
             "speckle_range": 32,
-            "mode": "SGBM_3WAY" # Options: SGBM, HH, SGBM_3WAY
+            "mode": "SGBM_3WAY"
         },
         "wls": {
             "lambda": 8000.0,
-            "sigma": 1 # Bajo para preservar bordes!!
+            "sigma": 1
         }
     }
 
-    def __init__(self, calibration_data=None, config_path=None):
-        """
-        Inicializa el motor estéreo.
-        Args:
-            calibration_data: Diccionario con matrices (Q, P, etc.)
-            config_path: Ruta a un archivo .yaml con la configuración.
-        """
+    def __init__(self, calibration_data, config_path=None, scale=0.5):
         self.calibration = calibration_data
         
-        # 1. Cargar Configuración
+        # 1. Extracción Dinámica de Constantes
+        try:
+            def get_P(info):
+                if hasattr(info, 'P'): return np.array(info.P).reshape(3,4)
+                return np.array(info['projection_matrix']['data']).reshape(3,4)
+
+            P_left = get_P(self.calibration['left'])
+            P_right = get_P(self.calibration['right'])
+
+            raw_fx = P_left[0, 0]
+            raw_cx = P_left[0, 2]
+            raw_cy = P_left[1, 2]
+
+            self.FOCAL = raw_fx * scale
+            self.CX = raw_cx * scale
+            self.CY = raw_cy * scale
+
+            tx_right = P_right[0, 3]
+            self.BASELINE = abs(tx_right / raw_fx)
+
+            print(f"📐 CALIBRACIÓN AUTOMÁTICA (Escala {scale}x):")
+            print(f"   -> Focal: {self.FOCAL:.2f} px")
+            print(f"   -> Baseline: {self.BASELINE:.4f} m")
+
+        except Exception as e:
+            print(f"❌ Error calibración: {e}. Usando fallback.")
+            self.FOCAL = 730.35 
+            self.BASELINE = 0.1203
+            self.CX = 520.70
+            self.CY = 380.34
+
+        # 2. Configurar Filtro Profundidad
+        self.MAX_DEPTH_METERS = 4.0
+        if self.MAX_DEPTH_METERS > 0:
+            self.min_valid_disparity = (self.FOCAL * self.BASELINE) / self.MAX_DEPTH_METERS
+        else:
+            self.min_valid_disparity = 0
+
+        # 3. Cargar Configuración YAML
         self.config = self.DEFAULT_CONFIG.copy()
-        
         if config_path and os.path.exists(config_path):
             with open(config_path, 'r') as f:
                 loaded_cfg = yaml.safe_load(f)
-                # Actualizar recursivamente (simple)
                 if loaded_cfg:
                     for section in ['stereo', 'wls']:
                         if section in loaded_cfg:
                             self.config[section].update(loaded_cfg[section])
-            print(f"✅ Configuración estéreo cargada de: {config_path}")
-        else:
-            print("⚠️ Usando configuración estéreo por defecto.")
-        
-        cprint("La config es:", "green")
-        cprint("-" * 40,"green")
-        print(yaml.dump(self.config, default_flow_style=False, sort_keys=False),"green")
-        print("-" * 40,"green")
 
-        # Atajos para legibilidad
+        # 4. Crear Matchers
         s_cfg = self.config['stereo']
         w_cfg = self.config['wls']
         
         self.num_disp = s_cfg['num_disparities']
         self.block_size = s_cfg['block_size']
         
-        # Mapeo de modos
-        mode_map = {
-            "SGBM": cv2.STEREO_SGBM_MODE_SGBM,
-            "HH": cv2.STEREO_SGBM_MODE_HH,
-            "SGBM_3WAY": cv2.STEREO_SGBM_MODE_SGBM_3WAY
-        }
-        mode = mode_map.get(s_cfg.get('mode', 'SGBM_3WAY'), cv2.STEREO_SGBM_MODE_SGBM_3WAY)
+        mode_map = {"SGBM": 0, "HH": 1, "SGBM_3WAY": 2}
+        mode = mode_map.get(s_cfg.get('mode', 'SGBM_3WAY'), 2)
 
-        # 2. Crear Left Matcher (SGBM)
         self.left_matcher = cv2.StereoSGBM_create(
             minDisparity=s_cfg['min_disparity'],
             numDisparities=self.num_disp,
@@ -84,142 +100,112 @@ class StereoVision:
             mode=mode
         )
 
-        # 3. Crear Right Matcher y WLS Filter (Se crean siempre, se usan bajo demanda)
-        # Esto requiere opencv-contrib-python
-        self.right_matcher = cv2.ximgproc.createRightMatcher(self.left_matcher)
-        self.wls_filter = cv2.ximgproc.createDisparityWLSFilter(self.left_matcher)
-        self.wls_filter.setLambda(w_cfg['lambda'])
-        self.wls_filter.setSigmaColor(w_cfg['sigma'])
-        self.has_wls = True
+        try:
+            self.right_matcher = cv2.ximgproc.createRightMatcher(self.left_matcher)
+            self.wls_filter = cv2.ximgproc.createDisparityWLSFilter(self.left_matcher)
+            self.wls_filter.setLambda(w_cfg['lambda'])
+            self.wls_filter.setSigmaColor(w_cfg['sigma'])
+            self.has_wls = True
+        except AttributeError:
+            self.has_wls = False
 
-    def compute_disparity(self,frame_id ,img_l, img_r, strips, use_wls=False, debug=False, debug_path=None):
-        """
-        Calcula el mapa de disparidad.
-        Args:
-            strips: Lista de tuplas (y1, y2) para procesar solo franjas.
-            use_wls (bool): INTERRUPTOR para activar/desactivar el filtrado WLS.
-            debug (bool): Si True, muestra en pantalla.
-            debug_path (str): Si se da una ruta, guarda la imagen de debug ahí.
-        """
+        # 5. IMPORTANTE: Generar la Matriz Q
+        self.calibration['Q'] = self.get_decimated_Q()
+
+    def compute_disparity(self, frame_id, img_l, img_r, strips, use_wls=False, debug=False, debug_path=None):
         h, w = img_l.shape[:2]
         full_map = np.zeros((h, w), dtype=np.float32)
         
-        if not strips:
-            return full_map
+        if not strips: return full_map
 
-        # Chequeo de seguridad
         do_wls = use_wls and self.has_wls
 
         for y1, y2 in strips:
-            # 1. Recorte (Crop)
             strip_l = img_l[y1:y2, :]
             strip_r = img_r[y1:y2, :]
             
-            # 2. Cálculo SGBM
             if do_wls:
-                # Camino lento pero preciso (WLS)
                 disp_l = self.left_matcher.compute(strip_l, strip_r)
                 disp_r = self.right_matcher.compute(strip_r, strip_l)
-                
-                disp_filtered = self.wls_filter.filter(
-                    disparity_map_left=disp_l,
-                    left_view=strip_l, # WLS usa la imagen original para guiar el suavizado
-                    disparity_map_right=disp_r
-                )
-                
-                # Normalización (x16 -> float)
+                disp_filtered = self.wls_filter.filter(disp_l, strip_l, disparity_map_right=disp_r)
                 disp_float = disp_filtered.astype(np.float32) / 16.0
-                
             else:
-                # Camino rápido (Solo SGBM)
                 raw_disp = self.left_matcher.compute(strip_l, strip_r)
                 disp_float = raw_disp.astype(np.float32) / 16.0
             
-            # 3. Limpieza (Quitar valores negativos o inválidos)
             disp_float[disp_float < 0] = 0
             
-            # 4. Pegar en el mapa final
+            # Filtro físico
+            valid_disp_mask = (disp_float > self.min_valid_disparity)
+            disp_float[~valid_disp_mask] = 0
+            
             full_map[y1:y2, :] = disp_float
             
-            
-            
             if debug or (debug_path is not None):
-                
-                disp_img_path = os.path.join(debug_path,frame_id+"_disparity.png")
-                self.visualize_disparity(
-                    full_map, 
-                    strips=strips, 
-                    show=debug,          # Mostrar solo si debug=True
-                    save_path=disp_img_path # Guardar solo si hay ruta
-                )
+                filename = f"{frame_id}_disparity.png"
+                save_p = os.path.join(debug_path, filename) if debug_path else None
+                self.visualize_disparity(full_map, strips, show=debug, save_path=save_p)
             
         return full_map
     
-    
-    def visualize_disparity(self, disparity_map, strips=None, show=False, save_path=None, window_name="Stereo Debug"):
-        """
-        Genera una visualización coloreada del mapa de disparidad.
-        
-        Args:
-            disparity_map: Imagen float32.
-            strips: Lista de franjas para dibujar líneas (opcional).
-            show (bool): Si True, abre una ventana de OpenCV.
-            save_path (str): Si no es None, guarda la imagen en esa ruta.
-            window_name (str): Nombre de la ventana.
-            
-        Returns:
-            vis_color: La imagen generada (BGR).
-        """
-        # 1. Normalizar y Colorear
+    def visualize_disparity(self, disparity_map, strips=None, show=False, save_path=None):
         norm_disp = (disparity_map / self.num_disp) * 255.0
         vis_uint8 = np.clip(norm_disp, 0, 255).astype(np.uint8)
         vis_color = cv2.applyColorMap(vis_uint8, cv2.COLORMAP_JET)
-        
-        # Poner en negro los datos inválidos (0)
         vis_color[disparity_map == 0] = 0
         
-        # 2. Dibujar Franjas
         if strips:
             h, w = disparity_map.shape[:2]
             for y1, y2 in strips:
                 cv2.line(vis_color, (0, y1), (w, y1), (0, 255, 0), 1)
                 cv2.line(vis_color, (0, y2), (w, y2), (0, 255, 0), 1)
 
-        # 3. OPCIÓN: GUARDAR
-        if save_path is not None:
-            # Crear carpeta si no existe (evita errores)
-            import os
-            directory = os.path.dirname(save_path)
-            if directory and not os.path.exists(directory):
-                os.makedirs(directory, exist_ok=True)
-                
+        if save_path:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
             cv2.imwrite(save_path, vis_color)
-            # print(f"💾 Disparity map saved: {save_path}")
 
-        # 4. OPCIÓN: MOSTRAR
         if show:
-            cv2.imshow(window_name, vis_color)
-            cv2.waitKey(1) # 1ms para refrescar ventana
+            cv2.imshow("Debug", vis_color)
+            cv2.waitKey(1)
             
         return vis_color
     
-    def get_decimated_Q():
+    def get_decimated_Q(self):
         return np.float32([
-            [1, 0, 0, -CX],
-            [0, 1, 0, -CY],
-            [0, 0, 0, FOCAL_DECIMATED],
-            [0, 0, 1.0/BASELINE, 0]  # Positivo para Z hacia adelante
+            [1, 0, 0, -self.CX],
+            [0, 1, 0, -self.CY],
+            [0, 0, 0, self.FOCAL],
+            [0, 0, 1.0/self.BASELINE, 0]
         ])
 
     def reproject_to_3d(self, disparity_map, roi_mask=None):
-        """Genera nubes de puntos XYZ usando la matriz Q."""
-        if self.calibration is None or 'Q' not in self.calibration:
-             # Si no hay Q, no podemos reproyectar metricamente
-             return None
-        #TODO ! LA Q HA DE SER DECIMATED SI USO LES DECIMATED!!
+        if 'Q' not in self.calibration: return None
         points_3d = cv2.reprojectImageTo3D(disparity_map, self.calibration['Q'])
-        
         if roi_mask is not None:
             return points_3d[roi_mask > 0]
-            
         return points_3d
+
+    @staticmethod
+    def save_point_cloud(points_3d, colors, mask, save_path, z_min=0.1, z_max=10.0):
+        if mask is None:
+            mask = np.ones(points_3d.shape[:2], dtype=bool)
+
+        valid_points = points_3d[mask]
+        valid_colors = colors[mask]
+        
+        if len(valid_points) == 0:
+            print(f"[WARN] Nube vacía para {os.path.basename(save_path)}")
+            return
+
+        zs = valid_points[:, 2]
+        z_mask = (zs > z_min) & (zs < z_max)
+        
+        final_points = valid_points[z_mask]
+        final_colors = valid_colors[z_mask]
+        
+        if len(final_points) > 0:
+            print(f"   ☁️ Guardando PLY ({len(final_points)} pts): {os.path.basename(save_path)}")
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(final_points)
+            pcd.colors = o3d.utility.Vector3dVector(final_colors[:, ::-1] / 255.0)
+            o3d.io.write_point_cloud(save_path, pcd)

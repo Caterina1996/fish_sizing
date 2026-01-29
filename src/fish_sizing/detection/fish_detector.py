@@ -43,18 +43,39 @@ class FishDetector:
             line_width=1,
             batch=1, 
             device='cuda', 
+            # project = debug_path,
+            # name = self.masks_folder,
             half=True,
             agnostic_nms=True,
             show_labels=True,
-            save=False, 
+            save=True, 
             augment=True,
             imgsz=1280, 
             max_det=250,
             boxes=True, 
+            exist_ok=True,
             persist=True, 
             verbose=False,
             tracker=self.tracker
         )
+        
+        # GUARDAR LES INFERÈNCIES PEL DEBUG:
+        if debug_path!=None:
+           
+            res = results[0]
+            annotated_frame = res.plot(line_width=1, font_size=1)  # Esto te devuelve la imagen con las máscaras y cajas pintadas
+
+            file_name = f"frame_{frame_id:06d}.jpg"  # Ej: frame_000123.jpg
+
+            # Asegúrate de que la carpeta existe (YOLO ya no la crea por ti si save=False)
+            save_folder = os.path.join(debug_path, self.masks_folder)
+            os.makedirs(save_folder, exist_ok=True)
+
+            full_save_path = os.path.join(save_folder, file_name)
+
+            # 4. Guardar tú mismo
+            cv2.imwrite(full_save_path, annotated_frame)
+            
 
         frame_fish_list = []
         
