@@ -95,6 +95,8 @@ def main():
     model_path = transform_path2docker(args.model_path)
     stereo_config_path = transform_path2docker(args.stereo_config)
     decimation = args.decimation
+    
+    save_scene_pc = True
 
     if not os.path.exists(bag_file):
         cprint(f"❌ Error: El archivo bag no existe: {bag_file}", "red")
@@ -190,40 +192,52 @@ def main():
             # Inyectar disparidad en la escena y validar peces
             frame_scene.disparity_image = disparity_map
             
-            # E) REPROYECCIÓN 3D (Point Cloud)
+            
             # -----------------------------------------------------------
             # 1. Reproyectar toda la imagen a XYZ
-            points_3d = stereo.reproject_to_3d(disparity_map)
+            scene_points_3d = stereo.reproject_to_3d(disparity_map)
+            # Inicializar la máscara para seleccionar el trozo de pc que queremos
             
-            # 2. Crear máscara combinada de todos los peces
-            # (Iteramos sobre los peces detectados para sumar sus máscaras)
-            combined_mask = np.zeros(disparity_map.shape, dtype=bool)
+            all_pc_mask = np.zeros(disparity_map.shape, dtype=bool)
+            all_fish_mask = np.zeros(disparity_map.shape, dtype=bool)
             
-            # Añadimos píxeles con disparidad válida (filtro físico)
+            # Filtrar las distancias > dist__max (no me fio de mesures més enfora de 4m)
             valid_disp_mask = (disparity_map > stereo.min_valid_disparity)
             
-            # Si YOLO devolvió máscaras, las usamos para filtrar solo el pez
-            if frame_scene.fish_list:
-                for fish in frame_scene.fish_list:
-                    if fish.mask is not None:
-                        # Asegurar que es binaria y sumar
-                        combined_mask = combined_mask | (fish.mask > 0)
-                
-                # Máscara Final = (Donde hay pez) AND (Donde hay disparidad válida)
-                final_mask = combined_mask & valid_disp_mask
-            else:
-                # Si no hay máscaras (solo cajas), usamos toda la disparidad válida
-                final_mask = valid_disp_mask
-
-            # 3. Guardar Nube de Puntos (PLY)
-            ply_filename = os.path.join(out_path, f"{fname}_scene.ply")
+            scene_ply_name = os.path.join(out_path, f"{fname}_scene.ply")
+            all_fish_ply_name = os.path.join(out_path, f"{fname}_all_fish.ply")
+           
+            # Per cada peix mesurar i guardar info
+            for fish in frame_scene.fish_list:
+                if fish.mask is not None:
+                    # Asegurar que es binaria y sumar
+                    all_fish_mask = all_fish_mask | (fish.mask > 0)
+                    
+                    stereo.save_point_cloud(points_3d=scene_points_3d, 
+                        colors=processed_l, 
+                        mask=fish.mask, 
+                        save_path=os.path.join(out_path, f"{fname}_{fish.color_id}.ply"))
+            
+            # Máscara Final = (Donde hay peces) AND (Donde hay disparidad válida)
+            # all_fish_mask = all_fish_mask & valid_disp_mask
+            
+            # Save all fish:   
             stereo.save_point_cloud(
-                points_3d=points_3d, 
-                colors=processed_l, 
-                mask=final_mask, 
-                save_path=ply_filename, 
-                z_max=stereo.MAX_DEPTH_METERS
-            )
+                    points_3d=scene_points_3d, 
+                    colors=processed_l, 
+                    mask=all_fish_mask, 
+                    save_path=all_fish_ply_name)
+
+            if save_scene_pc:
+                # 3. Guardar Nube de Puntos (PLY) de la escena
+                ply_filename = os.path.join(out_path, f"{fname}_scene.ply")
+                stereo.save_point_cloud(
+                    points_3d=scene_points_3d, 
+                    colors=processed_l, 
+                    mask=valid_disp_mask, 
+                    save_path=scene_ply_name
+                    # z_max=stereo.max_depth_meters
+                )
 
         
         else:

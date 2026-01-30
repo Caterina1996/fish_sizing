@@ -9,6 +9,7 @@ stereo:
   speckle_window_size: 100
   speckle_range: 32
   mode: "SGBM_3WAY"
+  max_depth_meters: 4
 
 wls:
   lambda: 8000.0   # Más alto = Más suavizado (probar 8000)

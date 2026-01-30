@@ -260,72 +260,10 @@ class FrameScene:
         print("I found ", len(objects), " objects")
     
     
-        
-    def to_ros_msg(self):
-        from stereo_plome.msg import FrameScene as FrameSceneMsg
-        from stereo_plome.msg import Fish2D as Fish2DMsg
-        from sensor_msgs.msg import Image
-        from cv_bridge import CvBridge
-
-        bridge = CvBridge()
-        msg = FrameSceneMsg()
-        msg.frame_name = self.frame_name
-        msg.object_ids_mask = bridge.cv2_to_imgmsg(self.object_ids_mask, encoding="passthrough")
-        msg.class_ids_img = bridge.cv2_to_imgmsg(self.class_ids_img, encoding="passthrough") if self.class_ids_img is not None else Image()
-        msg.fish_list = [fish.to_ros_msg() for fish in self.fish_list]
-        return msg
-
-    @classmethod
-    def from_ros_msg(cls, msg):
-        from stereo_plome.msg import FrameScene as FrameSceneMsg
-        from stereo_plome.msg import Fish2D as Fish2DMsg
-        from sensor_msgs.msg import Image
-        from cv_bridge import CvBridge
-
-        bridge = CvBridge()
-        object_ids_mask = bridge.imgmsg_to_cv2(msg.object_ids_mask, desired_encoding="passthrough")
-        class_ids_img = bridge.imgmsg_to_cv2(msg.class_ids_img, desired_encoding="passthrough") if msg.class_ids_img.data else None
-        fish_list = [Fish2D.from_ros_msg(fm) for fm in msg.fish_list]
-        disparity_img = np.zeros_like(object_ids_mask)  # o recuperar si se transmite en el mensaje ROS
-        return cls(msg.frame_name, object_ids_mask, fish_list, disparity_img, class_ids_img)
-
     def __str__(self):
         fish_strings = "\n".join(str(fish) for fish in self.fish_list)
         return f"[Scene] {self.frame_name} with {len(self.fish_list)} fish:\n{fish_strings}"
                     
-                    
-        
-    def to_ros_msg(self):
-        from stereo_plome.msg import FrameScene as FrameSceneMsg
-        from stereo_plome.msg import Fish2D as Fish2DMsg
-        from sensor_msgs.msg import Image
-        from cv_bridge import CvBridge
-
-        bridge = CvBridge()
-        msg = FrameSceneMsg()
-        msg.frame_name = self.frame_name
-        msg.object_ids_mask = bridge.cv2_to_imgmsg(self.object_ids_mask, encoding="passthrough")
-        msg.class_ids_img = bridge.cv2_to_imgmsg(self.class_ids_img, encoding="passthrough") if self.class_ids_img is not None else Image()
-        msg.fish_list = [fish.to_ros_msg() for fish in self.fish_list]
-        return msg
-
-    @classmethod
-    def from_ros_msg(cls, msg):
-        from stereo_plome.msg import FrameScene as FrameSceneMsg
-        from stereo_plome.msg import Fish2D as Fish2DMsg
-        from sensor_msgs.msg import Image
-        from cv_bridge import CvBridge
-
-        bridge = CvBridge()
-        object_ids_mask = bridge.imgmsg_to_cv2(msg.object_ids_mask, desired_encoding="passthrough")
-        class_ids_img = bridge.imgmsg_to_cv2(msg.class_ids_img, desired_encoding="passthrough") if msg.class_ids_img.data else None
-        fish_list = [Fish2D.from_ros_msg(fm) for fm in msg.fish_list]
-        disparity_img = np.zeros_like(object_ids_mask)  # o recuperar si se transmite en el mensaje ROS
-        return cls(msg.frame_name, object_ids_mask, fish_list, disparity_img, class_ids_img)
-
-    def __str__(self):
-        fish_strings = "\n".join(str(fish) for fish in self.fish_list)
-        return f"[Scene] {self.frame_name} with {len(self.fish_list)} fish:\n{fish_strings}"
                     
     def get_detection_counts(self):
         """Return per-class counts and total detections for this frame."""

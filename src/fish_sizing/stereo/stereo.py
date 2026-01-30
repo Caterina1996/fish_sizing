@@ -54,18 +54,11 @@ class StereoVision:
             print(f"   -> Baseline: {self.BASELINE:.4f} m")
 
         except Exception as e:
-            print(f"❌ Error calibración: {e}. Usando fallback.")
+            print(f"❌ Error leyendo calibración: {e}. Usando default.")
             self.FOCAL = 730.35 
             self.BASELINE = 0.1203
             self.CX = 520.70
             self.CY = 380.34
-
-        # 2. Configurar Filtro Profundidad
-        self.MAX_DEPTH_METERS = 4.0
-        if self.MAX_DEPTH_METERS > 0:
-            self.min_valid_disparity = (self.FOCAL * self.BASELINE) / self.MAX_DEPTH_METERS
-        else:
-            self.min_valid_disparity = 0
 
         # 3. Cargar Configuración YAML
         self.config = self.DEFAULT_CONFIG.copy()
@@ -76,6 +69,13 @@ class StereoVision:
                     for section in ['stereo', 'wls']:
                         if section in loaded_cfg:
                             self.config[section].update(loaded_cfg[section])
+                            
+        # Configurar Filtro Profundidad -> més enllà d'aquesta distància no em crec l'stereo
+        self.max_depth_meters = self.config['stereo']['max_depth_meters']  
+        if self.max_depth_meters > 0:
+            self.min_valid_disparity = (self.FOCAL * self.BASELINE) / self.max_depth_meters
+        else:
+            self.min_valid_disparity = 0
 
         # 4. Crear Matchers
         s_cfg = self.config['stereo']
@@ -178,34 +178,50 @@ class StereoVision:
             [0, 0, 1.0/self.BASELINE, 0]
         ])
 
-    def reproject_to_3d(self, disparity_map, roi_mask=None):
-        if 'Q' not in self.calibration: return None
-        points_3d = cv2.reprojectImageTo3D(disparity_map, self.calibration['Q'])
-        if roi_mask is not None:
-            return points_3d[roi_mask > 0]
-        return points_3d
+    def reproject_to_3d(self, disparity_map):
+        """
+        Calcula la nube de puntos completa (H, W, 3).
+        """
+        # Genera una imagen (H, W, 3) con coordenadas X, Y, Z
+        self.points_3d = cv2.reprojectImageTo3D(disparity_map, self.calibration['Q'])        
+        return self.points_3d
 
-    @staticmethod
-    def save_point_cloud(points_3d, colors, mask, save_path, z_min=0.1, z_max=10.0):
+    def save_point_cloud(self,points_3d, colors, mask, save_path, z_min=0.1, z_max = None):
+        """
+        Guarda un PLY filtrando por máscara y profundidad.
+        """
+        # Pasar z_max si quiero usar una distancia maxima distinta
+        if z_max == None:
+            z_max = self.max_depth_meters
+        
+        # Si no pasan mascara devolvemos la pc de toda la franja    
         if mask is None:
             mask = np.ones(points_3d.shape[:2], dtype=bool)
 
-        valid_points = points_3d[mask]
-        valid_colors = colors[mask]
+        valid_points = points_3d[mask > 0]
+        valid_colors = colors[mask > 0]
         
         if len(valid_points) == 0:
             print(f"[WARN] Nube vacía para {os.path.basename(save_path)}")
             return
 
+        # 2. Filtrar por profundidad (Z) y limpiar infinitos
         zs = valid_points[:, 2]
-        z_mask = (zs > z_min) & (zs < z_max)
+        # isfinite quita los 'inf' que genera OpenCV donde disp=0
+        z_mask = (zs > z_min) & (zs < z_max) & np.isfinite(zs)
         
         final_points = valid_points[z_mask]
         final_colors = valid_colors[z_mask]
         
         if len(final_points) > 0:
-            print(f"   ☁️ Guardando PLY ({len(final_points)} pts): {os.path.basename(save_path)}")
+            print(f"   💾 PLY: {os.path.basename(save_path)} ({len(final_points)} pts)")
+            
             pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(final_points)
+            # OpenCV es BGR -> Open3D es RGB (Hacemos flip ::-1)
             pcd.colors = o3d.utility.Vector3dVector(final_colors[:, ::-1] / 255.0)
+            
+            # Crear carpeta si no existe
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
             o3d.io.write_point_cloud(save_path, pcd)
+            
