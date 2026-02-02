@@ -1,0 +1,2 @@
+track_id,class_name,n_frames,max_length_smart,mean_top_20_length,median_length,dist_camera_mean
+1,0,21,0.3602586936640356,0.34777609583023694,0.3335590760064141,2.802267452548691

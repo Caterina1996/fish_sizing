@@ -163,8 +163,12 @@ class Fish2D:
                 # Normalizamos disp para verla (porque en float los valores son pequeños para 0-255 o grandes)
                 disp_vis = cv2.normalize(disp_of_object, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
                 
+                mask_and_disp = ((disp_img > 1 )* 100.0).astype(np.uint8) + ((mask_img>0) * 100)
+
                 cv2.imwrite(os.path.join(debug_path, f"{prefix}_disp.png"), disp_vis)
                 cv2.imwrite(os.path.join(debug_path, f"{prefix}_mask.png"), (mask_img*255).astype(np.uint8))
+                cv2.imwrite(os.path.join(debug_path, f"{prefix}_mask_and_disp.png"), mask_and_disp)
+
                 cv2.imwrite(os.path.join(debug_path, f"{prefix}_ellipses.png"), object_img_color)
                 
                 print(f"IoU for {prefix}: {iou:.3f}")

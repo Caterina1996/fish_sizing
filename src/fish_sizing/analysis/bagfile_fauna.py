@@ -87,43 +87,117 @@ class Bagfile_fauna():
 
         # 1. Crear DataFrame 
         self.all_fish_df = pd.DataFrame(self.data_buffer)
-        self.all_fish_df = self.all_fish_df[self.columns_order]
+        
+        # Reordenar si las columnas existen
+        cols_existentes = [c for c in self.columns_order if c in self.all_fish_df.columns]
+        self.all_fish_df = self.all_fish_df[cols_existentes]
         
         # Añadir GT si existe
         if hasattr(self, 'gt_value'):
             self.all_fish_df["gt"] = self.gt_value
         
-        self.all_fish_df.to_csv(os.path.join(self.out_path,'all_fish_info_raw.csv'))
+        # Guardar RAW
+        self.all_fish_df.to_csv(os.path.join(self.out_path, 'all_fish_info_raw.csv'), index=False)
         
+        # 2. Filtrado Básico
         self.filtered_result_df = self.all_fish_df[
             (self.all_fish_df['is_3D_complete'] == True) &
             (self.all_fish_df['does_overlap'] == False) &
             (self.all_fish_df['in_image_borders'] == False) &
-            (self.all_fish_df['raw_length'].notna()) &  # Mejor que != -1 para manejar Nones de 2D
-            (self.all_fish_df['raw_length'] != -1)]
+            (self.all_fish_df['raw_length'].notna()) &
+            (self.all_fish_df['raw_length'] != -1)
+        ].copy()
          
-        self.filtered_df = self.filtered_result_df.copy()
         self.filtered_result_df.to_csv(os.path.join(self.out_path, 'all_complete_ok_fish.csv'), index=False)
 
-             # 3. Resumen (Group By Track ID)
+        # 3. Resumen y Filtrado Avanzado
         if not self.filtered_result_df.empty:
-            self.resume_df = self.filtered_result_df.groupby('track_id').agg(
+            
+            # Resumen estadístico simple
+            resume_raw_df = self.filtered_result_df.groupby('track_id').agg(
                 length_mean=('raw_length', 'mean'),
                 length_max=('raw_length', 'max'),
-                length_std=('raw_length', 'std'), # Útil para ver estabilidad
-                filtered_length_mean=('filtered_length', 'mean'),
-                filtered_length_max=('filtered_length', 'max'),
                 entry_count=('track_id', 'count')
             )
+            resume_raw_df.to_csv(os.path.join(self.out_path, 'resume_raw.csv'))
+
+            # --- APLICAMOS EL FILTRO INTELIGENTE ---
+            self.resume_filtered_df = self._filter_outliers_per_track(
+                self.filtered_result_df, 
+                min_tracks_abs=3, 
+                min_tracks_to_filter=5
+            )
             
-            # Guardar Filtrados y Resumen
-            self.filtered_result_df.to_csv(os.path.join(self.out_path, 'all_complete_ok_fish.csv'), index=False)
-            self.resume_df.to_csv(os.path.join(self.out_path, 'resume.csv'))
+            self.resume_filtered_df.to_csv(os.path.join(self.out_path, 'resume_filtered_smart.csv'), index=False)
             
             print(f"✅ Resultados guardados en: {self.out_path}")
         else:
             print("⚠️ No quedaron peces válidos tras el filtrado (Complete & Inside Borders).")
+    
+    def _filter_outliers_per_track(self, df_input, min_tracks_abs=3, min_tracks_to_filter=5):
+        """
+        Filtra outliers iterativamente comparando el máximo con el siguiente valor.
+        """
+        resume_list = []
+        
+        for track_id, track_data in df_input.groupby('track_id'):
+            
+            # A) Ignorar tracks muy cortos
+            if len(track_data) < min_tracks_abs: 
+                continue
 
+            # Lista ordenada de mayor a menor
+            sorted_lengths = track_data['filtered_length'].sort_values(ascending=False).tolist()
+            median_val = np.median(sorted_lengths)
+            
+            valid_max = sorted_lengths[0] # Por defecto
+            
+            # --- B) ALGORITMO SMART MAX ---
+            # Solo filtramos si hay suficientes datos
+            if len(sorted_lengths) >= min_tracks_to_filter:
+                
+                # Usamos WHILE porque la lista cambia de tamaño dinámicamente
+                while len(sorted_lengths) > 2:
+                    current_max = sorted_lengths[0]
+                    next_max = sorted_lengths[1]
+                    current_median = np.median(sorted_lengths) # Recalcular mediana quizás es excesivo, pero seguro
+                    
+                    # 1. Safety Check (Glitch gigante)
+                    if current_max > (current_median * 2.0):
+                        sorted_lengths.pop(0)
+                        continue
+
+                    # 2. Consistencia (Salto < 5%)
+                    diff_percentage = (current_max - next_max) / next_max
+                    
+                    if diff_percentage < 0.05: 
+                        valid_max = current_max # Validado
+                        break
+                    else:
+                        # Salto grande detectado, descartamos este máximo y probamos el siguiente
+                        sorted_lengths.pop(0)
+                
+                # Si nos quedamos sin candidatos en el bucle, cogemos el que quede
+                if len(sorted_lengths) <= 2:
+                    valid_max = sorted_lengths[0]
+
+            # --- C) Estadísticas ---
+            n_top = max(1, int(len(sorted_lengths) * 0.2))
+            top_lengths = sorted_lengths[:n_top]
+            mean_top_20 = sum(top_lengths) / len(top_lengths)
+
+            stats = {
+                'track_id': track_id,
+                'class_name': track_data['class_name'].iloc[0],
+                'n_frames': len(track_data),
+                'max_length_smart': valid_max,
+                'mean_top_20_length': mean_top_20,
+                'median_length': median_val,
+                'dist_camera_mean': track_data['fish_dist_from_camera'].mean()
+            }
+            resume_list.append(stats)
+        
+        return pd.DataFrame(resume_list)
 
         
         

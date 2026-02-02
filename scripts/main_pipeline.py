@@ -47,6 +47,10 @@ TOPICS_DICT = {
     "info_r": "/stereo_ch3/right/camera_info"
 }
 
+BAGFILE_PATH="/home/slimbook/bagfiles/peixos_morts_piscina_v3/2025_05_08/11_17_18/stereo_camera_images_2025-05-08-11-18-25_1.bag"
+MODEL_PATH = "/home/slimbook/models/yv11l/ylarge_d18_poolv2r_lantytr_nocturnes/weights/best.pt"
+OUT_PATH = "/home/slimbook/fish_sizing/out/test_export/2025-05-08-11-18-25_1/"
+
 # --- FUNCIONES AUXILIARES ---
 
 def transform_path2docker(path: str) -> str:
@@ -69,25 +73,31 @@ def transform_path2docker(path: str) -> str:
 def main():
     parser = argparse.ArgumentParser(description="Script para procesar bagfiles y guardar imágenes filtradas.")
     
-    parser.add_argument("--bag_file", "-bg", type=str, 
-                        default="/home/slimbook/bagfiles/LIMA/2025/2025_08_21/selec2/13_05_55/stereo_camera_images_2025-08-21-13-05-55_0.bag",
-                        help="Ruta al bagfile")
+    parser.add_argument("--bag_file", "-bg", type=str, help="Ruta al bagfile",
+                        default=BAGFILE_PATH)
+
+    parser.add_argument("--out_path", "-out", type=str, help="Carpeta donde se guardarán las imágenes procesadas",
+                        default=OUT_PATH)
     
-    parser.add_argument("--out_path", "-out", type=str, 
-                        default="/home/slimbook/fish_sizing/out/test_export",
-                        help="Carpeta donde se guardarán las imágenes procesadas")
+    parser.add_argument("--topic", type=str, default="left", choices=["left", "right"],help="Qué cámara exportar")
     
-    parser.add_argument("--topic", type=str, default="left", choices=["left", "right"],
-                        help="Qué cámara exportar")
-    
-    parser.add_argument("--model_path", type=str, default="/home/slimbook/models/yv11l/ylarge_d18_poolv2r_lantytr_nocturnes/weights/best.pt", 
-                        help="Path to the detection AI model")
+    parser.add_argument("--model_path", type=str,  help="Path to the detection AI model",
+                        default=MODEL_PATH)
                         
     parser.add_argument("--stereo_config", type=str, default="/home/slimbook/fish_sizing/config/stereo_config.yaml", 
                         help="Path to the yaml with the config for the stereo matching alg")
     
-    parser.add_argument("--decimation", type=float, default=0.5, 
-                        help="reescale the images")
+    parser.add_argument("--decimation", type=float, default=0.5, help="reescale the images")
+    
+    parser.add_argument("--ignore_borders", action="store_true", default=True,
+                        help="Si se activa, procesa peces aunque toquen los bordes de la imagen")
+    
+    parser.add_argument("--ignore_completeness", action="store_true", default=True,
+                        help="Si se activa, procesa peces aunque falten datos 3D (incomplete)")
+    
+    parser.add_argument("--ignore_overlap", action="store_true", default=True,
+                        help="Si se activa, procesa peces aunque los peces se solapen entre si")
+       
     
     args = parser.parse_args()
     
@@ -140,13 +150,12 @@ def main():
     # Usamos stream_stereo_pairs porque necesitamos AMBAS imágenes para rectificar
     for timestamp, img_l_raw, img_r_raw in bag_proc.stream_stereo_pairs():
     
-        if count > 2:
+        if count > 20:
             break
         
         # frame name TODO: decidir si vull el timestamp o count per facilitat
         fname = f"{timestamp}"
-        
-        
+    
         # Load the stereo pair
         img_proc.set_image_pair(img_l_raw, img_r_raw)
         
@@ -167,22 +176,23 @@ def main():
                                     debug_path=out_path, 
                                     save_obj=True)
         if any_fish:
-            
+            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
             # 1. Process image to improve the stereo matching later then 
+            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
             img_proc.apply_dehaze(omega=0.85, window_size=15,stereo_consistency=True) #-> Revisar esto xq ahora mismo no va be/no interesa
             img_proc.match_histograms(reference="left") # Igualar brillos
             img_proc.apply_clahe()
             processed_l, processed_r = img_proc.get_processed()
             
-            # Guardar processed
-            # fname = f"{timestamp}"
-
+            # SAVE IMAGES IF THEY CONTAIN FISH
             cv2.imwrite(os.path.join(out_path, fname+"_left.png"), processed_l)
             cv2.imwrite(os.path.join(out_path, fname+"_right.png"), processed_r)
             
-            # get strips for the calculation of the disparity
+            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+            # 2. Get strips for the calculation of the disparity + calculate disp and obtain pc
+            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
             strips = frame_scene.get_optimization_strips()
-            
+
             disparity_map = stereo.compute_disparity(
                                     frame_id = fname,
                                     img_l = processed_l, 
@@ -195,24 +205,26 @@ def main():
             # Inyectar disparidad en la escena y validar peces
             frame_scene.disparity_image = disparity_map
             
-            # -----------------------------------------------------------
-            # 1. Reproyectar toda la imagen a XYZ
-            scene_points_3d = stereo.reproject_to_3d(disparity_map)
-            # Inicializar la máscara para seleccionar el trozo de pc que queremos
+            scene_ply_name = os.path.join(out_path, f"{fname}_scene.ply")
+            all_fish_ply_name = os.path.join(out_path, f"{fname}_all_fish.ply")
             
+            # 2.1 Reproyectar toda la imagen a XYZ
+            scene_points_3d = stereo.reproject_to_3d(disparity_map)
+            
+            # Inicializar la máscara para seleccionar el trozo de pc que queremos
             all_pc_mask = np.zeros(disparity_map.shape, dtype=bool)
             all_fish_mask = np.zeros(disparity_map.shape, dtype=bool)
             
             # Filtrar las distancias > dist__max (no me fio de mesures més enfora de 4m)
             valid_disp_mask = (disparity_map > stereo.min_valid_disparity)
             
-            scene_ply_name = os.path.join(out_path, f"{fname}_scene.ply")
-            all_fish_ply_name = os.path.join(out_path, f"{fname}_all_fish.ply")
-           
-            # Per cada peix mesurar i guardar info
+            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+            # 3. Measure and log every detected fish
+            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
             for fish in frame_scene.fish_list:
                 if fish.mask is not None:
                     
+                    # Log fish info
                     fish_class = fish.class_name  
                     track_id = fish.track_id  
                     fish.is_complete(disparity_map, debug_path = os.path.join(out_path,"debug"), debug_mode=True)
@@ -226,26 +238,29 @@ def main():
                     print("With whom?",fish.overlapping_ids)
                     cprint("+++++++++++++++++++++++++++++++++++++++++","cyan")
                     
-                    fish_pcd = stereo.extract_point_cloud(scene_points_3d, processed_l, mask=fish.mask)
-                                        
+                    # Save fish pc
                     fish_ply_path = os.path.join(out_path, f"{fname}_{fish.color_id}.ply")
+                    fish_pcd = stereo.extract_point_cloud(scene_points_3d, processed_l, mask=fish.mask)
+                    stereo.save_point_cloud(fish_pcd,save_path=fish_ply_path)     
                     
+                    # Convert to numpy array to fish3D class 
+                    # TODO! -> check if we can skip this transformation here
+                    # Pot ser això podria estar a la classe fish3D o millor aquí?
                     points_np = np.asarray(fish_pcd.points) # (N, 3) float64
                     colors_rgb_float = np.asarray(fish_pcd.colors)
                     colors_bgr_int = (colors_rgb_float[:, ::-1] * 255).astype(np.uint8)
                         
                     current_fish_3d = Fish3D(fish, points_np, out_path,colors_bgr_int)
                     
-                    fish_3d_ok = fish.is_3d_complete and not fish.in_image_borders
-                    
-                    #Ara ho sobreescric temporalment per guardar les pcs
-                    fish_3d_ok = True
+                    # Decide wether to measure this fish or not
+                    cond_completeness = fish.is_3d_complete or args.ignore_completeness
+                    cond_borders = not fish.in_image_borders or args.ignore_borders
+                    cond_overlap = not fish.does_overlap or args.ignore_overlap             
+                    fish_3d_ok = cond_completeness and cond_borders and cond_overlap
 
-                    # Solo medimos si el pez está entero y no toca los bordes
                     if fish_3d_ok:
                         
-                        cprint(f"   ⚙️ Procesando Fish {track_id}...", "yellow")
-                        
+                        cprint(f" 🐟 ⚙️ Procesando Fish {track_id}...", "yellow")
                         # A) Filtrado Avanzado (HDBSCAN adaptativo)
                         current_fish_3d.filter_outliers_HDBSCAN_adaptive()
                         current_fish_3d.get_distance_camera_fish()
@@ -297,3 +312,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
