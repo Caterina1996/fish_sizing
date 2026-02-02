@@ -13,13 +13,14 @@ import hdbscan
 import collections
 
 from fish_sizing.utils import tools
-from fish_detector.detection.fish2D import Fish2D 
+from fish_sizing.detection.fish2D import Fish2D, FrameScene
 
 class Fish3D(Fish2D):
     def __init__(self, fish2d, pointcloud_raw, base_path):
         # Llama al constructor de la clase base
         super().__init__(fish2d.fish_frame, fish2d.color_id, fish2d.class_name,fish2d.model_classes_dict,
-                        fish2d.class_colours_dict,fish2d.model_used,fish2d.track_id, fish2d.in_image_borders)
+                         fish2d.mask,fish2d.bbox, fish2d.class_colours_dict,fish2d.does_overlap, 
+                         fish2d.overlapping_ids, fish2d.model_used,fish2d.track_id, fish2d.in_image_borders)
         
         self.__dict__.update(fish2d.__dict__)
         
@@ -128,137 +129,6 @@ class Fish3D(Fish2D):
         o3d.io.write_point_cloud(save_path, pcd)
         return True
     
-    
-# ----------------------------------------------------------------------------------------------------------
-    # def filter_outliers(self, threshold=2):
-    #     #The Z-score represents how many standard deviations a data point is from the mean.
-    #     # Check for zero variance in z_array (avoid nans in z-score)
-
-    #     z_vals = self.pointcloud_raw[:, 2]
-    #     if np.var(z_vals) < 1e-9:
-    #         z_scores = np.zeros_like(z_vals)
-    #     else:
-    #         z_scores = stats.zscore(z_vals)
-
-    #     self.pointcloud_filtered = self.pointcloud_raw[np.abs(z_scores) < threshold, :]
-        
-    #     if self.pointcloud_filtered.shape[0] > 10:
-    #         self.pointcloud_size_ok = True
-
-    #     else:
-    #         msg = f"Filtered pointcloud too small ({self.pointcloud_filtered.shape[0]} points)"
-    #         print(colored(msg, 'blue'))
-    #         self.pc_error_log.append({
-    #             "frame_id": self.fish_frame,
-    #             "color_id": self.color_id,
-    #             "issue": msg
-    #         })
-    
-
-    # def filter_outliers_z_diffs(self, std_ratio=3, z_diff_threshold=0.1, debug_plot=False):
-    #     """
-    #     Detecta discontinuidades grandes en la coordenada Z y conserva el bloque con más puntos.
-    #     Si debug_plot=True, muestra los segmentos separados por saltos en Z.
-    #     """
-
-    #     z_vals = self.pointcloud_raw[:, 2]
-    #     sorted_indices = np.argsort(z_vals)
-    #     z_vals_sorted = z_vals[sorted_indices]
-
-    #     # Diferencias entre vecinos
-    #     z_diffs = np.diff(z_vals_sorted)
-
-    #     # Z-score de las diferencias
-    #     if np.var(z_diffs) < 1e-9:
-    #         z_scores = np.zeros_like(z_diffs)
-    #     else:
-    #         z_scores = stats.zscore(z_diffs)
-
-    #     # Identificar saltos grandes
-    #     big_z_difs = (np.abs(z_scores) > std_ratio) | (np.abs(z_diffs) > z_diff_threshold)
-    #     jump_indices = np.where(big_z_difs)[0]
-
-    #     if len(jump_indices) > 0:
-    #         cut_points = np.concatenate(([0], jump_indices + 1, [len(z_vals_sorted)]))
-
-    #         segments = []
-    #         max_len = 0
-    #         best_segment = None
-
-    #         for i in range(len(cut_points) - 1):
-    #             start = cut_points[i]
-    #             end = cut_points[i + 1]
-    #             segment = sorted_indices[start:end]
-    #             segments.append(segment)
-    #             if len(segment) > max_len:
-    #                 max_len = len(segment)
-    #                 best_segment = segment
-
-    #         self.pointcloud_filtered = self.pointcloud_raw[best_segment]
-
-    #         # Debug: visualizar segmentos en colores
-    #         if debug_plot:
-    #             import open3d as o3d
-    #             import matplotlib.pyplot as plt
-    #             import matplotlib.cm as cm
-
-    #             geometries = []
-    #             cmap = cm.get_cmap('tab10')
-
-    #             for i, segment in enumerate(segments):
-    #                 pc = self.pointcloud_raw[segment]
-    #                 pcd = o3d.geometry.PointCloud()
-    #                 pcd.points = o3d.utility.Vector3dVector(pc[:, :3])
-    #                 color = cmap(i % 10)[:3]
-    #                 pcd.paint_uniform_color(color)
-    #                 geometries.append(pcd)
-
-    #             print(f"Visualizando {len(segments)} segmentos detectados...")
-    #             o3d.visualization.draw_geometries(geometries)
-
-    #     else:
-    #         self.pointcloud_filtered = self.pointcloud_raw
-
-    #     if self.pointcloud_filtered.shape[0] > 10:
-    #         self.pointcloud_size_ok = True
-    #     else:
-    #         msg = f"Filtered pointcloud too small ({self.pointcloud_filtered.shape[0]} points)"
-    #         print(colored(msg, 'blue'))
-    #         self.pc_error_log.append({
-    #             "frame_id": self.fish_frame,
-    #             "color_id": self.color_id,
-    #             "issue": msg
-    #         })
-                
-                
-                
-                
-    # def filter_outliers_DBSCAN(self, eps=0.02, min_samples=20):
-    #     """
-    #     Filtra puntos que no pertenecen al blob 3D principal usando clustering espacial.
-        
-    #     Args:
-    #         eps: Distancia máxima entre puntos para considerarlos vecinos 
-    #         min_samples: Mínimo de puntos para formar un cluster
-    #     """
-    #     # 1. Clusterización 3D
-    #     clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(self.pointcloud_raw[:, :3])
-    #     labels = clustering.labels_
-        
-    #     # 2. Identificar el cluster principal (excluyendo outliers label=-1)
-    #     unique_labels, counts = np.unique(labels[labels != -1], return_counts=True)
-    #     if len(unique_labels) == 0:
-    #         self.pointcloud_filtered = np.empty((0, 3))
-    #         return
-        
-    #     main_cluster_label = unique_labels[np.argmax(counts)]
-        
-    #     # 3. Filtrar solo los puntos del cluster principal
-    #     main_cluster_mask = (labels == main_cluster_label)
-    #     self.pointcloud_filtered = self.pointcloud_raw[main_cluster_mask]
-        
-    #     # 4. Validación de tamaño
-    #     self.pointcloud_size_ok = len(self.pointcloud_filtered) > 50  
         
     def filter_outliers_HDBSCAN_adaptive(
         self,

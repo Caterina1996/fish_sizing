@@ -180,48 +180,62 @@ class StereoVision:
 
     def reproject_to_3d(self, disparity_map):
         """
-        Calcula la nube de puntos completa (H, W, 3).
+        Calcula la matriz densa de coordenadas 3D (H, W, 3).
+        Mantiene la estructura de imagen para poder usar máscaras 2D.
         """
-        # Genera una imagen (H, W, 3) con coordenadas X, Y, Z
-        self.points_3d = cv2.reprojectImageTo3D(disparity_map, self.calibration['Q'])        
-        return self.points_3d
+        if 'Q' not in self.calibration: return None
+        # Devuelve (H, W, 3) con XYZ en cada pixel (o inf si disp=0)
+        return cv2.reprojectImageTo3D(disparity_map, self.calibration['Q'])
 
-    def save_point_cloud(self,points_3d, colors, mask, save_path, z_min=0.1, z_max = None):
+    def extract_point_cloud(self, points_3d, colors, mask=None, z_min=0.1, z_max=None):
         """
-        Guarda un PLY filtrando por máscara y profundidad.
-        """
-        # Pasar z_max si quiero usar una distancia maxima distinta
-        if z_max == None:
-            z_max = self.max_depth_meters
+        Convierte la matriz densa en una nube de puntos Open3D limpia.
+        Útil para guardar o para procesar (medir volumen, longitud, etc).
         
-        # Si no pasan mascara devolvemos la pc de toda la franja    
-        if mask is None:
-            mask = np.ones(points_3d.shape[:2], dtype=bool)
+        Returns:
+            pcd (o3d.geometry.PointCloud): Objeto nube de puntos (o None si está vacía).
+        """
+        # 1. Defaults
+        if z_max is None: z_max = self.max_depth_meters
+        if mask is None: mask = np.ones(points_3d.shape[:2], dtype=bool)
 
-        valid_points = points_3d[mask > 0]
-        valid_colors = colors[mask > 0]
-        
-        if len(valid_points) == 0:
-            print(f"[WARN] Nube vacía para {os.path.basename(save_path)}")
-            return
+        # 2. MAke sure the mask is a boolean
+        boolean_mask = (mask > 0)
 
-        # 2. Filtrar por profundidad (Z) y limpiar infinitos
+        # 3. Aplicar máscara 2D
+        valid_points = points_3d[boolean_mask]
+        valid_colors = colors[boolean_mask]
+
+        if len(valid_points) == 0: return None
+
+        # 4. Filtro Z (Profundidad) y NaNs
         zs = valid_points[:, 2]
-        # isfinite quita los 'inf' que genera OpenCV donde disp=0
+        # isfinite quita los 'inf'/'nan' de la reproyección
         z_mask = (zs > z_min) & (zs < z_max) & np.isfinite(zs)
-        
+
         final_points = valid_points[z_mask]
         final_colors = valid_colors[z_mask]
-        
-        if len(final_points) > 0:
-            print(f"   💾 PLY: {os.path.basename(save_path)} ({len(final_points)} pts)")
-            
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(final_points)
-            # OpenCV es BGR -> Open3D es RGB (Hacemos flip ::-1)
-            pcd.colors = o3d.utility.Vector3dVector(final_colors[:, ::-1] / 255.0)
-            
-            # Crear carpeta si no existe
+
+        if len(final_points) == 0: 
+            cprint("[WARNING]: No points in this pointcloud! AY AY AY! ","red")
+            return None
+
+        # 5. Crear Objeto Open3D
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(final_points)
+        # BGR (OpenCV) -> RGB (Open3D)
+        pcd.colors = o3d.utility.Vector3dVector(final_colors[:, ::-1] / 255.0)
+
+        return pcd
+
+    def save_point_cloud(self, pcd, save_path, z_min=0.1, z_max=None):
+        """
+        Extrae la nube y la guarda.
+        """
+        if pcd is not None:
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
             o3d.io.write_point_cloud(save_path, pcd)
-            
+            print(f"   💾 PLY Guardado: {os.path.basename(save_path)} ({len(pcd.points)} pts)")
+        else:
+            # Opcional: Avisar si está vacía
+            cprint(f"   ⚠️ Nube vacía o descartada: {os.path.basename(save_path)}","red")

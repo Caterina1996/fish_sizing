@@ -11,6 +11,7 @@ from fish_sizing.utils.image_processor import ImageProcessor
 from fish_sizing.detection.fish2D import Fish2D, FrameScene  # pot ser aquest import ens el podem estalviar
 from fish_sizing.stereo.stereo import StereoVision
 from fish_sizing.detection.fish_detector import  FishDetector
+from fish_sizing.measurement.fish3D import  Fish3D
 
 # # 1. Definir la ruta "mala" de ROS
 # ros_path = '/opt/ros/noetic/lib/python3/dist-packages'
@@ -210,35 +211,39 @@ def main():
             # Per cada peix mesurar i guardar info
             for fish in frame_scene.fish_list:
                 if fish.mask is not None:
-                    # Asegurar que es binaria y sumar
+                    
+                    fish_class = fish.class_name  
+                    track_id = fish.track_id  
+                    fish.is_complete(disparity_map, debug_path = out_path, debug_mode=True)
+                    
+                    cprint("FISH SUMMARY","cyan")
+                    print("object number: ",fish.color_id)
+                    print("fish class: ",fish_class)
+                    print("Is fish complete? ",fish.is_3d_complete)
+                    print("IS fish in the borders of the image?",fish.in_image_borders)
+                    print("Does the fish overlap with others",fish.does_overlap)
+                    print("With whom?",fish.overlapping_ids)
+                    cprint("+++++++++++++++++++++++++++++++++++++++++","cyan")
+                    
+                    fish_pcd = stereo.extract_point_cloud(scene_points_3d, processed_l, mask=fish.mask)
+                    current_fish_3d = Fish3D(fish, fish_pcd, out_path)
+                    
+                    fish_ply_path = os.path.join(out_path, f"{fname}_{fish.color_id}.ply")
+                    
+                    if fish_pcd is not None:
+                        # Guardar
+                        stereo.save_point_cloud(fish_pcd,save_path=fish_ply_path)
+                        
+                        
                     all_fish_mask = all_fish_mask | (fish.mask > 0)
                     
-                    stereo.save_point_cloud(points_3d=scene_points_3d, 
-                        colors=processed_l, 
-                        mask=fish.mask, 
-                        save_path=os.path.join(out_path, f"{fname}_{fish.color_id}.ply"))
+            # Save all fish combined
+            all_fish_pcd = stereo.extract_point_cloud(scene_points_3d, processed_l, mask=all_fish_mask)
+            stereo.save_point_cloud(all_fish_pcd,save_path=all_fish_ply_name)
             
-            # Máscara Final = (Donde hay peces) AND (Donde hay disparidad válida)
-            # all_fish_mask = all_fish_mask & valid_disp_mask
-            
-            # Save all fish:   
-            stereo.save_point_cloud(
-                    points_3d=scene_points_3d, 
-                    colors=processed_l, 
-                    mask=all_fish_mask, 
-                    save_path=all_fish_ply_name)
-
-            if save_scene_pc:
-                # 3. Guardar Nube de Puntos (PLY) de la escena
-                ply_filename = os.path.join(out_path, f"{fname}_scene.ply")
-                stereo.save_point_cloud(
-                    points_3d=scene_points_3d, 
-                    colors=processed_l, 
-                    mask=valid_disp_mask, 
-                    save_path=scene_ply_name
-                    # z_max=stereo.max_depth_meters
-                )
-
+            # Save scene
+            scene_pcd = stereo.extract_point_cloud(scene_points_3d, processed_l, mask=valid_disp_mask)
+            stereo.save_point_cloud(scene_pcd,save_path=scene_ply_name)
         
         else:
             cprint(f"No fish found in frame {count} :(, gonna process next image!","yellow")

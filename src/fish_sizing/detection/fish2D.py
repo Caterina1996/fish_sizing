@@ -7,9 +7,7 @@ class Fish2D:
     def __init__(self, frame_id, color_id, fish_class,model_classes_dict,mask, bbox,
                  class_colours_dict, does_overlap , overlapping_ids,
                  model_used="unknown_yolo",track_id=None, 
-                 in_image_borders=False,
-                                     # Nuevos parámetros
-        
+                 in_image_borders=False,       
                  debug_path=""):
         
         self.fish_frame = frame_id
