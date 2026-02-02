@@ -163,6 +163,61 @@ class ImageProcessor:
             self.processed_left = self._match_histogram_stats(self.processed_left, self.processed_right)
         return self
     
+    def match_brightness_linear(self, reference="left"):
+        """
+        Iguala brillo y contraste usando una transformación lineal (Bias y Gain).
+        Es mucho más estable para estéreo que el histogram matching completo.
+        Formula: I_new = (I - mean_old) * (std_ref / std_old) + mean_ref
+        """
+        if self.processed_left is None or self.processed_right is None:
+            return
+
+        # Definir fuente y referencia
+        if reference == "left":
+            src = self.processed_right
+            ref = self.processed_left
+        else:
+            src = self.processed_left
+            ref = self.processed_right
+
+        # Convertir a LAB para trabajar solo sobre luminancia (Canal L)
+        # Esto evita distorsionar los colores, solo iguala la luz
+        src_lab = cv2.cvtColor(src, cv2.COLOR_BGR2LAB)
+        ref_lab = cv2.cvtColor(ref, cv2.COLOR_BGR2LAB)
+        
+        l_src, a_src, b_src = cv2.split(src_lab)
+        l_ref, _, _ = cv2.split(ref_lab)
+
+        # Calcular medias y desviaciones estándar
+        mean_src, std_src = cv2.meanStdDev(l_src)
+        mean_ref, std_ref = cv2.meanStdDev(l_ref)
+        
+        mean_src = mean_src[0][0]
+        std_src = std_src[0][0]
+        mean_ref = mean_ref[0][0]
+        std_ref = std_ref[0][0]
+
+        # Evitar división por cero
+        if std_src < 1e-5: std_src = 1e-5
+
+        # Aplicar transformación lineal
+        # gain = std_ref / std_src
+        # bias = mean_ref - mean_src * gain
+        
+        l_res = np.float32(l_src)
+        l_res = (l_res - mean_src) * (std_ref / std_src) + mean_ref
+        l_res = np.clip(l_res, 0, 255).astype(np.uint8)
+
+        # Reconstruir imagen
+        res_lab = cv2.merge((l_res, a_src, b_src))
+        result = cv2.cvtColor(res_lab, cv2.COLOR_LAB2BGR)
+
+        # Guardar resultado en la variable de clase correspondiente
+        if reference == "left":
+            self.processed_right = result
+        else:
+            self.processed_left = result
+    
     def _clahe(self,img):
         if len(img.shape) == 2: # Grayscale
             return self.clahe.apply(img)
@@ -360,9 +415,39 @@ class ImageProcessor:
             # [ Right Original | Right Procesada ]
             combined_img = np.vstack((combined_img, combined_r))
 
-        # 2. Mostrar
-        cv2.imshow(window_name, combined_img)
-        cv2.waitKey(wait_time)
+        # Definimos una altura máxima cómoda para ver en monitor (ej. 900px)
+        MAX_DISPLAY_HEIGHT = 900  
+        
+        h_final, w_final = combined_img.shape[:2]
+        
+        if h_final > MAX_DISPLAY_HEIGHT:
+            scale_factor = MAX_DISPLAY_HEIGHT / h_final
+            # Calculamos nuevas dimensiones
+            new_w = int(w_final * scale_factor)
+            new_h = int(h_final * scale_factor)
+            # Creamos una copia pequeña SOLO para mostrar con imshow
+            img_to_show = cv2.resize(combined_img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        else:
+            img_to_show = combined_img
+
+        cv2.imshow(window_name, img_to_show)
+        
+        if wait_time == 0:
+            # Bucle infinito hasta pulsar tecla o cerrar ventana
+            while True:
+                key = cv2.waitKey(100) # Chequear cada 100ms
+                
+                # Si se pulsó una tecla válida (distinto de -1) salimos
+                if key != -1:
+                    break
+                
+                # Si se cerró la ventana con la X (propiedad WND_PROP_VISIBLE < 1)
+                if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+                    print("⚠️ Ventana cerrada manualmente. Continuando ejecución...")
+                    break
+        else:
+            # Si hay un tiempo definido (ej. modo vídeo), usamos el wait normal
+            cv2.waitKey(wait_time)
 
         # 3. Guardar en disco (Opcional)
         if save_folder is not None:

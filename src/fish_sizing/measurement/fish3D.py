@@ -23,13 +23,7 @@ class Fish3D(Fish2D):
                          fish2d.overlapping_ids, fish2d.model_used,fish2d.track_id, fish2d.in_image_borders)
         
         self.__dict__.update(fish2d.__dict__)
-        
-        
-        # Atributos nuevos o extendidos de Fish3D        
-        
                
-        # Atributos nuevos o extendidos de Fish3D        
-        
         self.fish_direction = None
         self.azimuth_deg = -1
         self.elevation_deg = -1

@@ -8,7 +8,7 @@ from termcolor import colored
 from fish_sizing.detection.fish2D import Fish2D, FrameScene 
 
 class FishDetector:
-    def __init__(self, model_path, conf_thr=0.5, masks_folder="inferred", tracker="botsort.yaml"):
+    def __init__(self, model_path, conf_thr=0.5, masks_folder="", tracker="botsort.yaml"):
         print(f"Cargando modelo YOLO: {model_path}")
         self.model_path = model_path
         self.model = YOLO(model_path)
@@ -65,7 +65,7 @@ class FishDetector:
             res = results[0]
             annotated_frame = res.plot(line_width=1, font_size=1)  # Esto te devuelve la imagen con las máscaras y cajas pintadas
 
-            file_name = f"frame_{frame_id:06d}.jpg"  # Ej: frame_000123.jpg
+            file_name = f"frame_{frame_id:05d}_inferred.jpg"  # Ej: frame_000123.jpg
 
             # Asegúrate de que la carpeta existe (YOLO ya no la crea por ti si save=False)
             save_folder = os.path.join(debug_path, self.masks_folder)
@@ -237,7 +237,7 @@ class FishDetector:
         return True, frame_scene
 
     def _save_debug_data(self, base_path, frame_id, class_mask, id_mask, track_mask):
-        out_folder = os.path.join(base_path, self.masks_folder)
+        out_folder = os.path.join(base_path, self.masks_folder,"debug")
         os.makedirs(out_folder, exist_ok=True)
         cv2.imwrite(os.path.join(out_folder, f"{frame_id}_masked.png"), class_mask)
         cv2.imwrite(os.path.join(out_folder, f"{frame_id}_object_ids.png"), id_mask)

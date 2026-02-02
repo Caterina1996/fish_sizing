@@ -154,7 +154,8 @@ def main():
             break
         
         # frame name TODO: decidir si vull el timestamp o count per facilitat
-        fname = f"{timestamp}"
+        # fname = f"{timestamp}"
+        fname = f"frame_{count}"
     
         # Load the stereo pair
         img_proc.set_image_pair(img_l_raw, img_r_raw)
@@ -180,8 +181,17 @@ def main():
             # 1. Process image to improve the stereo matching later then 
             # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
             img_proc.apply_dehaze(omega=0.85, window_size=15,stereo_consistency=True) #-> Revisar esto xq ahora mismo no va be/no interesa
+            # img_proc.visualize_and_save()
+            img_l, img_r = img_proc.get_processed()
+            
             img_proc.match_histograms(reference="left") # Igualar brillos
+            # img_proc.visualize_and_save()
+            img_proc.convert_to_custom_grayscale()
+            # img_proc.visualize_and_save()
             img_proc.apply_clahe()
+            # img_proc.visualize_and_save()
+            img_proc.match_histograms(reference="left")
+            # img_proc.visualize_and_save()
             processed_l, processed_r = img_proc.get_processed()
             
             # SAVE IMAGES IF THEY CONTAIN FISH
@@ -240,7 +250,7 @@ def main():
                     
                     # Save fish pc
                     fish_ply_path = os.path.join(out_path, f"{fname}_{fish.color_id}.ply")
-                    fish_pcd = stereo.extract_point_cloud(scene_points_3d, processed_l, mask=fish.mask)
+                    fish_pcd = stereo.extract_point_cloud(scene_points_3d, img_l, mask=fish.mask)
                     stereo.save_point_cloud(fish_pcd,save_path=fish_ply_path)     
                     
                     # Convert to numpy array to fish3D class 
@@ -293,11 +303,11 @@ def main():
                     all_fish_mask = all_fish_mask | (fish.mask > 0)
                     
             # Save all fish combined
-            all_fish_pcd = stereo.extract_point_cloud(scene_points_3d, processed_l, mask=all_fish_mask)
+            all_fish_pcd = stereo.extract_point_cloud(scene_points_3d, img_l, mask=all_fish_mask)
             stereo.save_point_cloud(all_fish_pcd,save_path=all_fish_ply_name)
             
             # Save scene
-            scene_pcd = stereo.extract_point_cloud(scene_points_3d, processed_l, mask=valid_disp_mask)
+            scene_pcd = stereo.extract_point_cloud(scene_points_3d, img_l, mask=valid_disp_mask)
             stereo.save_point_cloud(scene_pcd,save_path=scene_ply_name)
         
         else:

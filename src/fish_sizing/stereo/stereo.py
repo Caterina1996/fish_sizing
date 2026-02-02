@@ -49,7 +49,7 @@ class StereoVision:
             tx_right = P_right[0, 3]
             self.BASELINE = abs(tx_right / raw_fx)
 
-            print(f"📐 CALIBRACIÓN AUTOMÁTICA (Escala {scale}x):")
+            print(f"📐 CALIBRACIÓN AUTOMÁTICA LEÍDA DEL BAGFILE (Escala {scale}x):")
             print(f"   -> Focal: {self.FOCAL:.2f} px")
             print(f"   -> Baseline: {self.BASELINE:.4f} m")
 
