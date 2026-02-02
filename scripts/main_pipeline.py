@@ -12,6 +12,7 @@ from fish_sizing.detection.fish2D import Fish2D, FrameScene  # pot ser aquest im
 from fish_sizing.stereo.stereo import StereoVision
 from fish_sizing.detection.fish_detector import  FishDetector
 from fish_sizing.measurement.fish3D import  Fish3D
+from fish_sizing.analysis.bagfile_fauna import  Bagfile_fauna
 
 # # 1. Definir la ruta "mala" de ROS
 # ros_path = '/opt/ros/noetic/lib/python3/dist-packages'
@@ -128,6 +129,7 @@ def main():
     )
     
     fish_detector = FishDetector(model_path)
+    bagfile_fauna = Bagfile_fauna(out_path)
     
     stereo = StereoVision(calibration_data=camera_info, config_path=stereo_config_path,scale=decimation)
     
@@ -193,7 +195,6 @@ def main():
             # Inyectar disparidad en la escena y validar peces
             frame_scene.disparity_image = disparity_map
             
-            
             # -----------------------------------------------------------
             # 1. Reproyectar toda la imagen a XYZ
             scene_points_3d = stereo.reproject_to_3d(disparity_map)
@@ -214,7 +215,7 @@ def main():
                     
                     fish_class = fish.class_name  
                     track_id = fish.track_id  
-                    fish.is_complete(disparity_map, debug_path = out_path, debug_mode=True)
+                    fish.is_complete(disparity_map, debug_path = os.path.join(out_path,"debug"), debug_mode=True)
                     
                     cprint("FISH SUMMARY","cyan")
                     print("object number: ",fish.color_id)
@@ -226,15 +227,54 @@ def main():
                     cprint("+++++++++++++++++++++++++++++++++++++++++","cyan")
                     
                     fish_pcd = stereo.extract_point_cloud(scene_points_3d, processed_l, mask=fish.mask)
-                    current_fish_3d = Fish3D(fish, fish_pcd, out_path)
-                    
+                                        
                     fish_ply_path = os.path.join(out_path, f"{fname}_{fish.color_id}.ply")
                     
-                    if fish_pcd is not None:
-                        # Guardar
-                        stereo.save_point_cloud(fish_pcd,save_path=fish_ply_path)
+                    points_np = np.asarray(fish_pcd.points) # (N, 3) float64
+                    colors_rgb_float = np.asarray(fish_pcd.colors)
+                    colors_bgr_int = (colors_rgb_float[:, ::-1] * 255).astype(np.uint8)
                         
+                    current_fish_3d = Fish3D(fish, points_np, out_path,colors_bgr_int)
+                    
+                    fish_3d_ok = fish.is_3d_complete and not fish.in_image_borders
+                    
+                    #Ara ho sobreescric temporalment per guardar les pcs
+                    fish_3d_ok = True
+
+                    # Solo medimos si el pez está entero y no toca los bordes
+                    if fish_3d_ok:
                         
+                        cprint(f"   ⚙️ Procesando Fish {track_id}...", "yellow")
+                        
+                        # A) Filtrado Avanzado (HDBSCAN adaptativo)
+                        current_fish_3d.filter_outliers_HDBSCAN_adaptive()
+                        current_fish_3d.get_distance_camera_fish()
+
+                        raw_saved = current_fish_3d.save_fish_pointcloud(filtered=False)
+                        filt_saved = current_fish_3d.save_fish_pointcloud(filtered=True)
+                        
+                        # C) MEDICIÓN (PCA + PyntCloud)
+                        if raw_saved:
+                            print(f"   📏 Midiendo Raw...")
+                            current_fish_3d.measure_fish_length_ply_with_angles_and_plot(
+                                plot_fish_direction=True, filtered=False)
+                        
+                        if filt_saved:
+                            print(f"   📏 Midiendo Filtrado...")
+                            current_fish_3d.measure_fish_length_ply_with_angles_and_plot(
+                                plot_fish_direction=True, filtered=True)
+                            
+                        bagfile_fauna.add_fish(current_fish_3d)
+
+                    else:
+                        cprint(f"   ⚠️ Saltando medición Fish {track_id} (Incompleto o en borde)", "red")
+                        print(f"⚠️ path to scene {frame_scene_path}: sin pointcloud — se añadirá con valores None")
+                        print("SCENE:",scene_object.fish_list)
+                        for fish_2d in scene_object.fish_list:
+                            print("fish yey!! fshhhhhhhhhhhh")
+                            bagfile_fauna.add_fish_2D(fish_2d)
+
+                    # Acumular máscara para guardar "all_fish" después
                     all_fish_mask = all_fish_mask | (fish.mask > 0)
                     
             # Save all fish combined
@@ -250,6 +290,8 @@ def main():
         
         count += 1
         print(f"Procesado frame par: {count}", end='\r')
+    
+    bagfile_fauna.process_and_save_df()
 
     cprint(f"\n✅ Terminado. {count} pares guardados en {out_path}", "green")
 

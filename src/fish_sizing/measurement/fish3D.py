@@ -1,14 +1,14 @@
 import numpy as np
+import os
+from termcolor import colored
+
 import open3d as o3d
 from sklearn.decomposition import PCA
 from scipy import stats
-
-import os
-from termcolor import colored
 from pyntcloud import PyntCloud
-
 import cloudpickle as pickle
 from sklearn.cluster import DBSCAN
+from sklearn.preprocessing import StandardScaler
 import hdbscan
 import collections
 
@@ -16,7 +16,7 @@ from fish_sizing.utils import tools
 from fish_sizing.detection.fish2D import Fish2D, FrameScene
 
 class Fish3D(Fish2D):
-    def __init__(self, fish2d, pointcloud_raw, base_path):
+    def __init__(self, fish2d, pointcloud_raw, base_path,colors):
         # Llama al constructor de la clase base
         super().__init__(fish2d.fish_frame, fish2d.color_id, fish2d.class_name,fish2d.model_classes_dict,
                          fish2d.mask,fish2d.bbox, fish2d.class_colours_dict,fish2d.does_overlap, 
@@ -24,13 +24,17 @@ class Fish3D(Fish2D):
         
         self.__dict__.update(fish2d.__dict__)
         
+        
+        # Atributos nuevos o extendidos de Fish3D        
+        
+               
         # Atributos nuevos o extendidos de Fish3D        
         
         self.fish_direction = None
         self.azimuth_deg = -1
         self.elevation_deg = -1
 
-        self.pointcloud_raw = pointcloud_raw  # numpy array (N x 4)
+        self.pointcloud_raw = np.asarray(pointcloud_raw)  # numpy array (N x 4)
         self.pointcloud_filtered = None
         self.pointcloud_size_ok = False
 
@@ -40,71 +44,89 @@ class Fish3D(Fish2D):
         self.pointcloud_dir = os.path.join(base_path, f"frame_{self.fish_frame}")
         self.fish_dist_from_camera = -1
         
+        self.colors= colors
+        
         self.pc_error_log = []
             
     def get_distance_camera_fish(self):
-            #TEncontrar la distancia del pez a la camara
-
-            z_vals = self.pointcloud_filtered[:, 2]
-            self.fish_dist_from_camera = np.mean(z_vals)
+        #Encontrar la distancia del pez a la camara
+        z_vals = self.pointcloud_filtered[:, 2]
+        self.fish_dist_from_camera = np.mean(z_vals)
         
     
-    def measure_fish_length_ply_with_angles_and_plot(self, plot_fish_direction=True,filtered=True):
+    def measure_fish_length_ply_with_angles_and_plot(self, 
+                                                     plot_fish_direction=True,
+                                                     filtered=True):
+        """
+        Mide el pez usando PCA directamente sobre los datos en memoria (Numpy).
+        """
         
+        # 1. Seleccionar nube de puntos
         if filtered:
-            file_path = os.path.join(self.pointcloud_dir,"object_"+str(self.color_id)+"_filtered.ply")
+            points = self.pointcloud_filtered
+            label_type = "Filtered"
         else:
-            
-            file_path = os.path.join(self.pointcloud_dir,"object_"+str(self.color_id)+".ply")
+            points = self.pointcloud_raw
+            label_type = "Raw"
         
-        cloud = PyntCloud.from_file(file_path)
-        points = cloud.points[["x", "y", "z"]].values
+        # Validaciones
+        if points is None or len(points) < 10:
+            print(f"⚠️ No hay puntos suficientes para medir ({label_type}).")
+            return
+            
+        # 2. PCA (Principal Component Analysis)
         pca = PCA(n_components=3)
-
-        if not self.pointcloud_size_ok:
-            return -1, None, None, None
-
         pca.fit(points)
+
+        # El componente principal (eigenvector con mayor varianza) es la dirección del pez
         principal_components = pca.components_
         fish_direction = principal_components[np.argmax(pca.explained_variance_)]
         
-        # Project to get length
+        # Project points over the eigenvector to get length
         projections = np.dot(points, fish_direction)
         fish_length = np.max(projections) - np.min(projections)
 
         # --- ANGLE CALCULATION ---
+        # Normalizar vector
         fish_direction = fish_direction / np.linalg.norm(fish_direction)
+        # azimuth: angle with the YZ plane?
         azimuth = np.arctan2(fish_direction[1], fish_direction[0])
-        elevation = np.arctan2(fish_direction[2], np.linalg.norm(fish_direction[:2]))
         azimuth_deg = np.degrees(azimuth)
+
+        # elevation: angle with the XY plane -> 
+        # Ideal case 0 so the fish is in the xy plane
+        elevation = np.arctan2(fish_direction[2], np.linalg.norm(fish_direction[:2]))
         elevation_deg = np.degrees(elevation)
 
-
-        print(f"🐟 Fish ID {self.color_id}:")
+        # Save object
+        print(f"🐟 Fish {self.track_id}, {self.color_id}, ({label_type}):")
         if filtered:
             # --- VISUALIZE ---
             if plot_fish_direction and fish_length>0:
                 # tools.plot_fish_with_dual_cameras(points, fish_direction, fish_length, color_id,self.base_path)
                 tools.plot_fish_with_dual_cameras_plotly(points, fish_direction, fish_length, self.color_id, self.base_path)
-        
+
             self.filtered_fish_direction = fish_direction
             self.filtered_length = fish_length
             self.azimuth_deg = azimuth_deg
             self.elevation_deg = elevation_deg
-            print(f"    ➤ filtered length = {self.filtered_length * 100:.2f} cm")
+            print(f"FISH  ➤ filtered length = {self.filtered_length * 100:.2f} cm")
         else:
             self.fish_direction = fish_direction
             self.length = fish_length
             print(f"    ➤ raw length = {self.length * 100:.2f} cm")
             
-        print(f"    ➤ Azimuth = {self.azimuth_deg:.2f}°")
-        print(f"    ➤ Elevation = {self.elevation_deg:.2f}°")
+        print(f"        ➤ Azimuth = {self.azimuth_deg:.2f}°")
+        print(f"        ➤ Elevation = {self.elevation_deg:.2f}°")
             
         # return fish_length, fish_direction, azimuth_deg, elevation_deg
 
     def save_fish_pointcloud(self, filtered=False):
+        """
+        Save the pc to disk using Open3D
+        """
         pc = self.pointcloud_filtered if filtered else self.pointcloud_raw
-        
+        colors = self.colors_filtered if filtered else self.colors
         if pc is None or pc.shape[0] == 0:
             msg = "EMPTY POINTCLOUD — cannot store or measure"
             print(colored(msg, 'red'))
@@ -115,7 +137,12 @@ class Fish3D(Fish2D):
             })
             return False
         
-        pcd = tools.create_pointcloud(pc)
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(pc)
+        # BGR (OpenCV) -> RGB (Open3D)
+        pcd.colors = o3d.utility.Vector3dVector(colors[:, ::-1] / 255.0)
+                
+        
         if filtered:
             save_path = os.path.join(self.pointcloud_dir,"object_"+str(self.color_id)+"_filtered.ply")
         else:
@@ -123,21 +150,20 @@ class Fish3D(Fish2D):
         
         if os.path.exists(self.pointcloud_dir)==False:
             os.makedirs(self.pointcloud_dir)
-            print("Saving pointcloud to: ",self.pointcloud_dir)
-            
+                       
         print("Saving pointcloud to: ",save_path)
         o3d.io.write_point_cloud(save_path, pcd)
         return True
-    
+   
         
-    def filter_outliers_HDBSCAN_adaptive(
-        self,
+    def filter_outliers_HDBSCAN_adaptive(self,
         min_cluster_size=10, # tamaño mínimo que debe tener un grupo de puntos para ser considerado un "cluster válido"
-        min_samples=2, #  Controla cuántos vecinos necesita un punto para ser considerado central o bien conectado.
-        z_jump_threshold_abs=0.07,
+        min_samples=2,     # Controla cuántos vecinos necesita un punto para ser considerado central o bien conectado.
+        z_jump_threshold_abs=0.07, 
         min_points_for_jump=20,
         max_jump_thr = 0.75,
         debug_plot=False):
+        
         """
         1) Agrupa con HDBSCAN (incluye ruido como clusters individuales).
         2) Ordena clusters por z_mean y detecta saltos.
@@ -147,9 +173,7 @@ class Fish3D(Fish2D):
             - En el resto de casos: elimina sólo los clusters CON tamaño < min_points_for_jump.
             (Así nunca se eliminan ambos por tamaño.)
         """
-        import numpy as np
-        import hdbscan
-        from sklearn.preprocessing import StandardScaler
+        
 
         pts = self.pointcloud_raw
         xyz = pts[:, :3]
@@ -165,20 +189,25 @@ class Fish3D(Fish2D):
         # xyz_norm[:, 2] *= z_weight
         
 
-        # 1) Clustering
+        # 1) Clustering HDBSCAN
         clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, 
                                     min_samples=min_samples,
                                     cluster_selection_epsilon=0.01,
                                     allow_single_cluster = True,
                                     alpha=0.5)
+        
         labels = clusterer.fit_predict(xyz)
 
         # 2) Construir clusters (ruido como individuales)
         clusters = []
+        
         for lbl in set(labels):
             if lbl != -1:
                 clusters.append(np.where(labels == lbl)[0])
+                
         for idx in np.where(labels == -1)[0]:
+            # Crea un array de numpy que contiene SOLO ese índice: ej. np.array([45])
+             # Y lo añade a la lista de clusters como si fuera un grupo más
             clusters.append(np.array([idx], dtype=int))
         
         # 3) Calcular medias y tamaños
@@ -246,6 +275,7 @@ class Fish3D(Fish2D):
         # 7) Reconstruir filtered
         kept_idxs = np.concatenate([ordered_clusters[k] for k in range(len(to_keep)) if to_keep[k]])
         self.pointcloud_filtered = pts[kept_idxs]
+        self.colors_filtered = self.colors[kept_idxs]
         self.pointcloud_size_ok = len(kept_idxs) > 10
 
         # 8) Visualización clara
