@@ -14,21 +14,6 @@ from fish_sizing.detection.fish_detector import  FishDetector
 from fish_sizing.measurement.fish3D import  Fish3D
 from fish_sizing.analysis.bagfile_fauna import  Bagfile_fauna
 
-# # 1. Definir la ruta "mala" de ROS
-# ros_path = '/opt/ros/noetic/lib/python3/dist-packages'
-
-# # 2. Si está en el path, la quitamos temporalmente
-# if ros_path in sys.path:
-#     sys.path.remove(ros_path)
-
-# # 3. AHORA importamos cv2 (Cogerá el de tu usuario ~/.local/...)
-# import cv2
-
-# # 4. (Opcional) Volvemos a meter la ruta de ROS por si necesitas 'rospy' luego
-# sys.path.append(ros_path)
-
-# # --- Resto de tus imports ---
-# import numpy as np
 
 # --- CONFIGURACIÓN ---
 PATH_MAPPINGS = {
@@ -50,6 +35,45 @@ TOPICS_DICT = {
 BAGFILE_PATH="/home/slimbook/bagfiles/peixos_morts_piscina_v3/2025_05_08/11_17_18/stereo_camera_images_2025-05-08-11-18-25_1.bag"
 MODEL_PATH = "/home/slimbook/models/yv11l/ylarge_d18_poolv2r_lantytr_nocturnes/weights/best.pt"
 OUT_PATH = "/home/slimbook/fish_sizing/out/test_export/2025-05-08-11-18-25_1/"
+
+# --- CONFIGURACIÓN DE PIPELINES ---
+PROCESSING_PIPELINES = {
+    "basic": [
+        # 1. Igualar luz (No guardamos, es un paso intermedio sutil)
+        ("match_histograms", {"reference": "left"}, True),
+        
+        # 2. Convertir a gris pasando del rojo
+        ("convert_to_custom_grayscale", {}, True),
+        
+        # 3. CLAHE (Guardamos, paso crítico que cambia mucho la imagen)
+        ("apply_clahe", {"clip_limit": 2.0, "grid_size": (8,8)}, True)
+        
+    ],
+
+    "experiment_dehaze": [
+        # Aquí queremos ver qué tal funciona el dehaze, así que True
+        ("apply_dehaze",            {"omega": 0.85}, True), 
+        ("match_brightness_linear", {"reference": "left"}, False),
+        ("apply_clahe",             {"clip_limit": 2.0}, True)
+    ]
+}
+
+SELECTED_PIPELINE = "basic"
+
+# img_proc.apply_dehaze(omega=0.85, window_size=15,stereo_consistency=True) #-> Revisar esto xq ahora mismo no va be/no interesa
+# # img_proc.visualize_and_save()
+# img_l, img_r = img_proc.get_processed()
+
+# img_proc.match_histograms(reference="left") # Igualar brillos
+# # img_proc.visualize_and_save()
+# img_proc.convert_to_custom_grayscale()
+# # img_proc.visualize_and_save()
+# img_proc.apply_clahe()
+# # img_proc.visualize_and_save()
+# img_proc.match_histograms(reference="left")
+# # img_proc.visualize_and_save()
+# processed_l, processed_r = img_proc.get_processed()
+
 
 # --- FUNCIONES AUXILIARES ---
 
@@ -97,8 +121,11 @@ def main():
     
     parser.add_argument("--ignore_overlap", action="store_true", default=True,
                         help="Si se activa, procesa peces aunque los peces se solapen entre si")
-       
     
+    parser.add_argument("--selected_pipeline", default=SELECTED_PIPELINE,
+                        help="Pipeline de procesamiento de imagenes")
+       
+
     args = parser.parse_args()
     
     # 1. Transformar rutas para Docker
@@ -168,6 +195,7 @@ def main():
             img_proc.check_rectification_interactive()
         
         img_proc.downsample(decimation)
+        img_l, img_r = img_proc.get_processed()
                
         # 2. Look for fish in the scene
         any_fish, frame_scene = fish_detector.process_frame(img_proc.processed_left, 
@@ -180,20 +208,19 @@ def main():
             # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
             # 1. Process image to improve the stereo matching later then 
             # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-            img_proc.apply_dehaze(omega=0.85, window_size=15,stereo_consistency=True) #-> Revisar esto xq ahora mismo no va be/no interesa
-            # img_proc.visualize_and_save()
-            img_l, img_r = img_proc.get_processed()
+            # EJECUTAR PIPELINE
             
-            img_proc.match_histograms(reference="left") # Igualar brillos
-            # img_proc.visualize_and_save()
-            img_proc.convert_to_custom_grayscale()
-            # img_proc.visualize_and_save()
-            img_proc.apply_clahe()
-            # img_proc.visualize_and_save()
-            img_proc.match_histograms(reference="left")
-            # img_proc.visualize_and_save()
             processed_l, processed_r = img_proc.get_processed()
             
+            cv2.imwrite(os.path.join(out_path, fname+"original_left.png"), processed_l)
+            cv2.imwrite(os.path.join(out_path, fname+"original_right.png"), processed_r)
+            
+            processed_l, processed_r = img_proc.run_pipeline(
+                PROCESSING_PIPELINES[args.selected_pipeline], 
+                base_debug_folder = out_path,
+                frame_id = fname
+            )
+
             # SAVE IMAGES IF THEY CONTAIN FISH
             cv2.imwrite(os.path.join(out_path, fname+"_left.png"), processed_l)
             cv2.imwrite(os.path.join(out_path, fname+"_right.png"), processed_r)

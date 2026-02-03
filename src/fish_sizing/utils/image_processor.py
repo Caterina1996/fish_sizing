@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from termcolor import cprint
+import os
 
 class ImageProcessor:
     def __init__(self, left_image=None, info_l=None, info_r=None , right_image=None, stereo=True):
@@ -365,6 +366,51 @@ class ImageProcessor:
         # Clip seguro
         res = np.clip(J * 255, 0, 255).astype(np.uint8)
         return res, A
+    
+    def run_pipeline(self, pipeline_steps, base_debug_folder=None, frame_id=""):
+        """
+        Ejecuta una secuencia de pasos definida por configuración.
+        
+        Args:
+            pipeline_steps (list): Lista de tuplas [("func_name", {kwargs}, save_debug_bool), ...]
+            base_debug_folder (str): Carpeta raíz para guardar los pasos de debug.
+            frame_id (str): Identificador del frame para nombrar los archivos.
+        """
+        cprint(f"   ⚙️ Ejecutando Pipeline...", "cyan")
+        
+        if base_debug_folder:
+            os.makedirs(base_debug_folder, exist_ok=True)
+
+        for i, step in enumerate(pipeline_steps):
+            
+            func_name, kwargs, save_step = step
+            
+            # 2. Ejecutar la función
+            if hasattr(self, func_name):
+                func = getattr(self, func_name)
+               
+                # Ejecutar processing step
+                func(**kwargs)
+                
+                # 3. Guardar Debug si la tupla lo indica
+                if save_step and base_debug_folder:
+                    # Creamos un ID único para que salgan ordenados alfabéticamente en la carpeta
+                    # Ej: "frame_100_step_01_apply_clahe"
+                    step_id = f"{frame_id}_step_{func_name}"
+                    
+                    # Llamamos a tu función visualize_and_save
+                    # Ponemos wait_time=1 para que refresque la ventana pero no bloquee (o 0 si quieres pausar)
+                    self.visualize_and_save(
+                        window_name=f"Debug: {func_name}", 
+                        wait_time=1, 
+                        save_folder=base_debug_folder, 
+                        frame_id=step_id
+                    )
+                   
+            else:
+                cprint(f"⚠️ [ERROR]: La función '{func_name}' no existe. Saltando.", "red")
+        
+        return self.get_processed()
     
     def visualize_and_save(self, window_name="Preview", wait_time=0, save_folder=None, frame_id=""):
         """
