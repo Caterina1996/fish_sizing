@@ -52,7 +52,7 @@ class FishDetector:
             augment=True,
             imgsz=1280, 
             max_det=250,
-            boxes=True, 
+            show_boxes=True, 
             exist_ok=True,
             persist=True, 
             verbose=False,
@@ -65,7 +65,7 @@ class FishDetector:
             res = results[0]
             annotated_frame = res.plot(line_width=1, font_size=1)  # Esto te devuelve la imagen con las máscaras y cajas pintadas
 
-            file_name = f"frame_{frame_id:05d}_inferred.jpg"  # Ej: frame_000123.jpg
+            file_name = f"frame_{frame_id}_inferred.jpg"  # Ej: frame_000123.jpg
 
             # Asegúrate de que la carpeta existe (YOLO ya no la crea por ti si save=False)
             save_folder = os.path.join(debug_path, self.masks_folder)

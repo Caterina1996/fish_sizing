@@ -13,6 +13,7 @@ from fish_sizing.stereo.stereo import StereoVision
 from fish_sizing.detection.fish_detector import  FishDetector
 from fish_sizing.measurement.fish3D import  Fish3D
 from fish_sizing.analysis.bagfile_fauna import  Bagfile_fauna
+from fish_sizing.analysis.fish_sizer import FishSizer
 
 
 # --- CONFIGURACIÓN ---
@@ -155,9 +156,11 @@ def main():
     model_path = transform_path2docker(args.model_path)
     stereo_config_path = transform_path2docker(args.stereo_config)
     
-    decimation = args.decimation
-    margin_meters = args.overlap_margin
+    args.out_path = out_path
+    args.model_path = model_path
+    args.stereo_config = stereo_config_path
     
+    decimation = args.decimation
     save_scene_pc = True
 
     if not os.path.exists(bag_file):
@@ -226,7 +229,7 @@ def main():
                
         # 2. Look for fish in the scene
         any_fish, frame_scene = fish_detector.process_frame(img_proc.processed_left, 
-                                    frame_id=fname, # decide weather to use this or timestamp 
+                                    frame_id=count, # decide weather to use this or timestamp 
                                     disparity_img=None, 
                                     save_debug=True, 
                                     debug_path=out_path, 
@@ -268,148 +271,33 @@ def main():
     
             # Inyectar disparidad en la escena y validar peces
             frame_scene.disparity_image = disparity_map
-            
-            scene_ply_name = os.path.join(out_path, f"{fname}_scene.ply")
-            all_fish_ply_name = os.path.join(out_path, f"{fname}_all_fish.ply")
-            
+           
+
             # 2.1 Reproyectar toda la imagen a XYZ
-            scene_points_3d = stereo.reproject_to_3d(disparity_map)
+            scene_points_3d = stereo.reproject_to_3d(disparity_map)     
+            frame_scene.scene_points_3d = scene_points_3d
             
             # Inicializar la máscara para seleccionar el trozo de pc que queremos
             all_pc_mask = np.zeros(disparity_map.shape, dtype=bool)
-            all_fish_mask = np.zeros(disparity_map.shape, dtype=bool)
+           
             
             # Filtrar las distancias > dist__max (no me fio de mesures més enfora de 4m)
             valid_disp_mask = (disparity_map > stereo.min_valid_disparity)
             
             # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-            # 3. Measure and log every detected fish
+            # 3. Measure Fish
             # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-            for fish in frame_scene.fish_list:
-                if fish.mask is not None:
-                    
-                    # Log fish info
-                    fish_class = fish.class_name  
-                    track_id = fish.track_id  
-                    fish.is_complete(disparity_map, debug_path = os.path.join(out_path,"debug"), debug_mode=True)
-                    
-                    cprint("FISH SUMMARY","cyan")
-                    print("object number: ",fish.color_id)
-                    print("fish class: ",fish_class)
-                    print("Is fish complete? ",fish.is_3d_complete)
-                    print("IS fish in the borders of the image?",fish.in_image_borders)
-                    print("Does the fish overlap with others",fish.does_overlap)
-                    print("With whom?",fish.overlapping_ids)
-                    cprint("+++++++++++++++++++++++++++++++++++++++++","cyan")
-                    
-                    # Save fish pc
-                    fish_ply_path = os.path.join(out_path, f"{fname}_{fish.color_id}.ply")
-                    fish_pcd = stereo.extract_point_cloud(scene_points_3d, img_l, mask=fish.mask)
-                    stereo.save_point_cloud(fish_pcd,save_path=fish_ply_path)     
-                    
-                    # Convert to numpy array to fish3D class 
-                    # TODO! -> check if we can skip this transformation here
-                    # Pot ser això podria estar a la classe fish3D o millor aquí?
-                    points_np = np.asarray(fish_pcd.points) # (N, 3) float64
-                    colors_rgb_float = np.asarray(fish_pcd.colors)
-                    colors_bgr_int = (colors_rgb_float[:, ::-1] * 255).astype(np.uint8)
-                        
-                    current_fish_3d = Fish3D(fish, points_np, out_path,colors_bgr_int)
-                    
-                    # # Decide wether to measure this fish or not #old
-                    # cond_completeness = fish.is_3d_complete or args.ignore_completeness
-                    # cond_borders = not fish.in_image_borders or args.ignore_borders
-                    # cond_overlap = not fish.does_overlap or args.ignore_overlap             
-                    # fish_3d_ok = cond_completeness and cond_borders and cond_overlap
-                    
-                    is_front_fish = True # Por defecto asumimos que sí
-                    
-                    if fish.does_overlap and not args.ignore_overlap:
-                        # Vamos a comprobar si somos el pez de delante
-                        
-                        # 1. Mi disparidad media (Mediana es más robusta a outliers)
-                        # Usamos la máscara para sacar solo mis píxeles
-                        my_disp_values = disparity_map[fish.mask > 0]
-                        
-                        if len(my_disp_values) > 0:
-                            my_median_disp = np.median(my_disp_values)
-                        else:
-                            my_median_disp = 0
-
-                        # 2. Comprobar contra los vecinos
-                        for neighbor_id in fish.overlapping_ids:
-                            # Buscamos al vecino en la lista de la escena
-                            # (Asumimos que fish_list tiene todos los detectados)
-                            neighbor = next((f for f in frame_scene.fish_list if f.track_id == neighbor_id), None)
-                            
-                            if neighbor and neighbor.mask is not None:
-                                neighbor_disp_values = disparity_map[neighbor.mask > 0]
-                                if len(neighbor_disp_values) > 0:
-                                    neigh_median_disp = np.median(neighbor_disp_values)
-
-                                    # Evitamos división por cero
-                                    if my_median_disp > 0.1 and neigh_median_disp > 0.1:
-                                        my_depth = (f * B) / my_median_disp
-                                        neigh_depth = (f * B) / neigh_median_disp
-                                        
-                                    # 3. La condición:
-                                    # Para ser el "Front Fish", mi profundidad debe ser menor (más cerca)
-                                    # que la del vecino MENOS el margen.
-                                    # Es decir: Neighbor_Z > My_Z + Margen
-                                    if neigh_depth < (my_depth + margin_meters):
-                                        # Si mi disparidad es MENOR (más lejos) o IGUAL (pegados) que la del vecino
-                                        # Significa que NO soy el pez de delante claramente.
-                                        is_front_fish = False
-                                        cprint(f"   🚫 Fish {track_id} descartado: Está detrás o pegado al Fish {neighbor_id}", "magenta")
-                                        break # Ya no hace falta mirar más, estoy ocluido.  
-
-                    # Ahora actualizamos la condición final
-                    cond_completeness = fish.is_3d_complete or args.ignore_completeness
-                    cond_borders = not fish.in_image_borders or args.ignore_borders
-                    
-                    # Aceptamos si NO hay solapamiento O SI hay solapamiento pero somos el de delante
-                    cond_overlap_smart = (not fish.does_overlap) or (is_front_fish) or args.ignore_overlap
-                    
-                    fish_3d_ok = cond_completeness and cond_borders and cond_overlap_smart
-                    
-                    if fish_3d_ok:
-                        cprint(f" 🐟 ⚙️ Procesando Fish {track_id}...", "yellow")
-                        
-                        # A) Filtrado y Medición 3D
-                        current_fish_3d.filter_outliers_HDBSCAN_adaptive()
-                        current_fish_3d.get_distance_camera_fish()
-
-                        raw_saved = current_fish_3d.save_fish_pointcloud(filtered=False)
-                        filt_saved = current_fish_3d.save_fish_pointcloud(filtered=True)
-                        
-                        if raw_saved:
-                            print(f"   📏 Midiendo Raw...")
-                            current_fish_3d.measure_fish_length_ply_with_angles_and_plot(
-                                plot_fish_direction=True, filtered=False)
-                        
-                        if filt_saved:
-                            print(f"   📏 Midiendo Filtrado...")
-                            current_fish_3d.measure_fish_length_ply_with_angles_and_plot(
-                                plot_fish_direction=True, filtered=True)
-                            
-                        # Añadir como pez 3D válido
-                        bagfile_fauna.add_fish(current_fish_3d)
-
-                    else:
-                        # CASO FALLIDO (Incompleto, borde o solapado)
-                        # Solo añadimos ESTE pez como entrada 2D (con valores None en 3D)
-                        cprint(f"   ⚠️ Saltando medición 3D Fish {track_id} (No cumple condiciones)", "red")
-                        bagfile_fauna.add_fish_2D(fish)
-
-                    # Acumular máscara para guardar "all_fish" después
-                    all_fish_mask = all_fish_mask | (fish.mask > 0)
-                    
-            # Save all fish combined
-            all_fish_pcd = stereo.extract_point_cloud(scene_points_3d, img_l, mask=all_fish_mask)
-            stereo.save_point_cloud(all_fish_pcd,save_path=all_fish_ply_name)
+            fish_sizer = FishSizer(frame_scene = frame_scene,
+                                   img_l = img_l,
+                                   bagfile_fauna = bagfile_fauna,
+                                   stereo =stereo,
+                                   args = args)
+            
+            bagfile_fauna =fish_sizer.measure_fish()
             
             # Save scene
             scene_pcd = stereo.extract_point_cloud(scene_points_3d, img_l, mask=valid_disp_mask)
+            scene_ply_name = os.path.join(out_path, f"{fname}_scene.ply")
             stereo.save_point_cloud(scene_pcd,save_path=scene_ply_name)
         
         else:
@@ -417,6 +305,10 @@ def main():
         
         count += 1
         print(f"Procesado frame par: {count}", end='\r')
+        
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    # 4. Log and process bagfile fauna
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
     
     bagfile_fauna.process_and_save_df()
 

@@ -56,16 +56,18 @@ class Bagfile_fauna():
         self.data_buffer.append(fish_data)
         
     def add_fish_2D(self, fish_2d: Fish2D):
-        """Add a 2D fish entry when no 3D data (PCD) is available"""
+        """Add a 2D fish entry when no 3D data is available (Corrected)"""
         fish_data = {
-            'frame_id': fish_2d.frame_id if hasattr(fish_2d, 'frame_id') else None,
+            'frame_id': fish_2d.fish_frame if hasattr(fish_2d, 'fish_frame') else None, 
             'class_name': fish_2d.class_name,
             'object_id': fish_2d.color_id,
             'track_id': fish_2d.track_id,
             'is_3D_complete': fish_2d.is_3d_complete,
-            'in_image_borders': fish_2d.in_image_borders,
-            'in_image_borders': None,
-            'does_overlap': None,
+            'in_image_borders': fish_2d.in_image_borders, 
+            'does_overlap': fish_2d.does_overlap,         
+            'overlapping_fish_ids': fish_2d.overlapping_ids, 
+            
+            # Campos 3D vacíos (Correcto)
             'fish_direction': None,
             'elevation_deg': None,
             'azimuth_deg': None,
@@ -73,8 +75,7 @@ class Bagfile_fauna():
             'filtered_length': None,
             'fish_dist_from_camera': None
         }
-
-        self.data_buffer.append(fish_data)    
+        self.data_buffer.append(fish_data)   
     
     def add_single_gt(self,gt):
         self.all_fish_df["gt"] = gt

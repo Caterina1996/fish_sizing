@@ -53,14 +53,24 @@ class FishSizer():
                 # Log fish info
                 fish_class = fish.class_name  
                 track_id = fish.track_id  
+                cprint("DISPARITY MAP++++++++++++++++++++++++++++++++++,""yellow")
+                print(self.frame_scene.disparity_map)
+                print(np.unique(self.frame_scene.disparity_map))
+                cprint("DISPARITY MAP++++++++++++++++++++++++++++++++++,""yellow")
+                
                 fish.is_complete(self.frame_scene.disparity_map, debug_path = os.path.join(self.out_path,"debug"), debug_mode=True)
                 
                 FishSizer._print_fish_summary(fish)
                 
-                # Save fish pc
                 fish_ply_path = os.path.join(self.out_path, f"{self.frame_scene.frame_name}_{fish.color_id}.ply")
                 fish_pcd = self.stereo.extract_point_cloud(self.frame_scene.scene_points_3d, self.img_l, mask=fish.mask)
-                self.stereo.save_point_cloud(fish_pcd,save_path=fish_ply_path)     
+                
+                if fish_pcd is None:
+                    cprint(f"   ⚠️ Nube vacía para Fish {fish.track_id}. Saltando...", "red")
+                    self.bagfile_fauna.add_fish_2D(fish)
+                    continue
+                
+                self.stereo.save_point_cloud(fish_pcd,save_path=fish_ply_path)
                 
                 # Convert to numpy array to fish3D class 
                 points_np = np.asarray(fish_pcd.points) # (N, 3) float64
@@ -73,6 +83,10 @@ class FishSizer():
                 fish_3d_ok =  self.check_3d(fish)        
                 if fish_3d_ok:
                     cprint(f" 🐟 ⚙️ Procesando Fish {track_id}...", "yellow")
+                    
+                    # Save fish pc
+                   
+                    self.stereo.save_point_cloud(fish_pcd,save_path=fish_ply_path)  
                     
                     # A) Filtrado y Medición 3D
                     current_fish_3d.filter_outliers_HDBSCAN_adaptive()
@@ -110,7 +124,8 @@ class FishSizer():
             
         return self.bagfile_fauna
             
-    def check_3d(self,fish):            
+    def check_3d(self,fish):    
+        cprint("hey no2","yellow")        
                 
         is_front_fish = True # Por defecto asumimos que sí
             
@@ -145,16 +160,20 @@ class FishSizer():
                         # Es decir: quiero que neighbour_Z > My_Z + Margen
                         if neigh_depth < (my_depth + self.overlap_margin):
                             is_front_fish = False
-                            cprint(f"   🚫 Fish {self.fish.track_id} descartado: Está detrás o pegado al Fish {neighbour_id}", "magenta")
+                            cprint(f"   🚫 Fish {fish.track_id} descartado...Está detrás o pegado al Fish {neighbour_id}", "magenta") 
                             break # Ya no hace falta mirar más, estoy ocluido.  
 
-            # Ahora actualizamos la condición final
-            cond_completeness = fish.is_3d_complete or self.ignore_completeness
-            cond_borders = not fish.in_image_borders or self.ignore_borders
-            
-            # Aceptamos si NO hay solapamiento O SI hay solapamiento pero somos el de delante
-            cond_overlap_smart = (not fish.does_overlap) or (is_front_fish) or self.ignore_overlap
-            
-            fish_3d_ok = cond_completeness and cond_borders and cond_overlap_smart
-            
-            return fish_3d_ok
+        # Ahora actualizamos la condición final
+        cond_completeness = fish.is_3d_complete or self.ignore_completeness
+        cond_borders = not fish.in_image_borders or self.ignore_borders
+        
+        # Aceptamos si NO hay solapamiento O SI hay solapamiento pero somos el de delante
+        cond_overlap_smart = (not fish.does_overlap) or (is_front_fish) or self.ignore_overlap
+        
+        print("completeness: ",cond_completeness)
+        print("cond_borders: ",cond_borders)
+        print("cond_overlap_smart: ",cond_overlap_smart)
+        
+        fish_3d_ok = cond_completeness and cond_borders and cond_overlap_smart
+        
+        return fish_3d_ok
