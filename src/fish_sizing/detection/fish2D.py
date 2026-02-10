@@ -198,15 +198,16 @@ class Fish2D:
 
                 
 class FrameScene:
-    def __init__(self, frame_name: str,img_size, object_ids_mask, fish_list, disparity_img, save_path, class_ids_img=None):
+    def __init__(self, frame_name: str,img_size, object_ids_mask, fish_list, disparity_map, save_path, class_ids_img=None):
         self.frame_name = frame_name
         self.img_size = img_size
         self.class_ids_img = class_ids_img # (Img) Each fish class is identified with a different colour in the mask
         self.object_ids_mask = object_ids_mask # (Img) Each fish object has a different color id that serves as object id
         self.fish_list = fish_list
-        self.disparity_image = disparity_img
+        self.disparity_map = disparity_map
         self.debug_mode=True
         self.save_path = save_path
+        self.scene_points_3d = None
         
         if self.debug_mode:
             self.debug_path=os.path.join(self.save_path,"debug")
@@ -256,7 +257,7 @@ class FrameScene:
         ids_mat_col = cv2.drawContours(ids_mat_col, contours_ids, -1, (0,255,0), 3) # -1 per dibuixar tots els contorns  
         cv2.imwrite(os.path.join(self.debug_path,str(self.frame_name)+"_all_contours_ids_mask.png"), ids_mat_col)
         print("All countours plotted and saved in: ", os.path.join(self.debug_path,str(self.frame_name)+"_all_contours_ids_mask.png"))
-        cv2.imwrite(os.path.join(self.debug_path,self.frame_name + "binarized_disp_image.png"), self.disparity_image * 255)  # Save the binarized image
+        cv2.imwrite(os.path.join(self.debug_path,self.frame_name + "binarized_disp_image.png"), self.disparity_map * 255)  # Save the binarized image
 
         objects = set(self.object_ids_mask.flatten())
         print("I found ", len(objects), " objects")

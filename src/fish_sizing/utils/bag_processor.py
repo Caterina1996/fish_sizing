@@ -6,7 +6,7 @@ from tqdm import tqdm
 import rosbag
 import cv2
 from typing import TypedDict, List, Dict, Any
-
+from termcolor import cprint
 
 # Para evitar un error con python 3.9...
 # Això no és lo seu pero bueno...
@@ -73,6 +73,47 @@ class CvBridge:
                     img = cv2.cvtColor(img, code)
                 except Exception:
                     pass # Si falla, devolvemos la imagen en gris
+
+        return img
+    
+    def imgcompressed_to_cv2(self, img_msg, desired_encoding="bgr8"):
+        """
+        Versión para CompressedImage que maneja Bayer y Mono.
+        """
+        # 1. Convertir el buffer de bytes a un array de numpy
+        np_arr = np.frombuffer(img_msg.data, np.uint8)
+        
+        # 2. Decodificar la imagen (OpenCV detecta si es PNG o JPG automáticamente)
+        # Usamos IMREAD_ANYCOLOR para mantener la profundidad si fuera necesario
+        img = cv2.imdecode(np_arr, cv2.IMREAD_UNCHANGED)
+
+        if img is None:
+            raise ValueError("❌ No se pudo decodificar la imagen comprimida.")
+
+        # 3. Recuperar el encoding original del campo 'format'
+        # Tu script guarda algo como: "rggb8; png compressed rggb8"
+        fmt_str = getattr(img_msg, 'format', '').lower()
+
+        # 4. Lógica de Debayering / Conversión de color
+        # Si la imagen es de un solo canal (Bayer o Mono)
+        if len(img.shape) == 2:
+            if "rggb" in fmt_str:
+                img = cv2.cvtColor(img, cv2.COLOR_BayerRG2BGR)
+            elif "bggr" in fmt_str:
+                img = cv2.cvtColor(img, cv2.COLOR_BayerBG2BGR)
+            elif "gbrg" in fmt_str:
+                img = cv2.cvtColor(img, cv2.COLOR_BayerGB2BGR)
+            elif "grbg" in fmt_str:
+                img = cv2.cvtColor(img, cv2.COLOR_BayerGR2BGR)
+            elif "mono" in fmt_str or "8uc1" in fmt_str:
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            else:
+                # Si no reconoce el bayer, al menos lo pasamos a BGR para que no falle
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+                
+        # 5. Si ya es color (3 canales) pero está en RGB, pasar a BGR para OpenCV
+        elif len(img.shape) == 3 and "rgb" in fmt_str:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
         return img
 
@@ -271,7 +312,7 @@ class BagProcessor:
         if cnt_match == 0:
             print("❌ ERROR CRÍTICO: No se han podido emparejar. Revisa los nombres de los topics o aumenta 'tolerance_ns'.")
 
-    def export_images_to_disk(self, output_folder, topic_key='left', processing_func=None):
+    def export_images_to_disk(self, output_folder, topic_key='left', processing_func=None,frames_base_name=None):
         """
         Extrae y guarda imágenes de UN tópico específico.
         
@@ -296,28 +337,29 @@ class BagProcessor:
             frame_counter = 0
             
             for _, msg, t in tqdm(bag.read_messages(topics=[target_topic]), total=n_msgs):
-                try:
-                    # 1. Conversión ROS -> OpenCV (BGR)
+                # 1. Conversión ROS -> OpenCV (BGR)
+                if "compressed" in target_topic:
+                    cprint("compressed","magenta")
+                    cv_image = self.bridge.imgcompressed_to_cv2(msg)
+                else:
                     cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+                
+                # 2. Preprocesado (Solo si se pasa una función)
+                if processing_func is not None:
+                    cv_image = processing_func(cv_image)
+                
+                # 3. Guardado
+                # Opción A: Nombre con timestamp (bueno para sincronizar luego)
+                # timestamp = str(t.to_nsec())
+                # filename = f"{timestamp}.png"
+                
+                # Opción B: Nombre secuencial (frame_001.png)
+                filename = f"{frames_base_name}_fr_{frame_counter:05d}.png"
+                
+                save_path = os.path.join(output_folder, filename)
+                cv2.imwrite(save_path, cv_image)
+                
+                frame_counter += 1
                     
-                    # 2. Preprocesado (Solo si se pasa una función)
-                    if processing_func is not None:
-                        cv_image = processing_func(cv_image)
-                    
-                    # 3. Guardado
-                    # Opción A: Nombre con timestamp (bueno para sincronizar luego)
-                    timestamp = str(t.to_nsec())
-                    filename = f"{timestamp}.png"
-                    
-                    # Opción B: Nombre secuencial (frame_001.png)
-                    # filename = f"frame_{frame_counter:05d}.png"
-                    
-                    save_path = os.path.join(output_folder, filename)
-                    cv2.imwrite(save_path, cv_image)
-                    
-                    frame_counter += 1
-                    
-                except Exception as e:
-                    print(f"Error frame {frame_counter}: {e}")
 
         print(f"✅ Guardadas {frame_counter} imágenes en {output_folder}")

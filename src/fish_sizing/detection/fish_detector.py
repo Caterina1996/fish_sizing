@@ -218,7 +218,7 @@ class FishDetector:
                 fish_list = frame_fish_list,
                 object_ids_mask = mask_id,
                 class_ids_img = mask_final,
-                disparity_img = disparity_img if disparity_img is not None else np.zeros_like(mask_id),
+                disparity_map = disparity_img if disparity_img is not None else np.zeros_like(mask_id),
                 save_path = os.path.join(debug_path,"debug") if debug_path else ""
             )    
 

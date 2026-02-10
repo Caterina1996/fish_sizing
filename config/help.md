@@ -86,6 +86,8 @@ mode (constante)
 lambda (float)
 --------------
 - Qué es: Fuerza de la regularización (cuánto suaviza).
+the amount of regularization during filtering. 
+Larger values force filtered disparity map edges to adhere more to source image edges.
 - Valor típico: 8000.0
 - Efecto:
     - Alto (10000+): Superficies muy lisas, puede perder textura real.
@@ -94,7 +96,11 @@ lambda (float)
 sigma (float)
 -------------
 - Qué es: Sensibilidad a los bordes de color. Determina cómo el filtro respeta los bordes de la imagen original.
-- Valor típico: 1.0 a 2.0
+    Defining how sensitive the filtering process is to source image edges. 
+    arge values can lead to disparity leakage through low-contrast edges. 
+    Small values can make the filter too sensitive to noise and textures in the source image
+
+- Typical values range from 0.8 to 2.0. 
 - Efecto:
     - Alto: Suaviza incluso a través de bordes de color.
     - Bajo: Se detiene bruscamente en los bordes de color (mantiene la silueta del pez nítida).

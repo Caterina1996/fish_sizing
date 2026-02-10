@@ -4,6 +4,7 @@ import numpy as np
 import yaml
 import os
 import open3d as o3d 
+from termcolor import cprint
 
 class StereoVision:
     # Configuración por defecto
