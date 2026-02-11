@@ -367,7 +367,7 @@ class ImageProcessor:
         res = np.clip(J * 255, 0, 255).astype(np.uint8)
         return res, A
     
-    def run_pipeline(self, pipeline_steps, base_debug_folder=None, frame_id=""):
+    def run_pipeline(self, pipeline_steps, base_debug_folder=None, frame_id="",visualize=True):
         """
         Ejecuta una secuencia de pasos definida por configuración.
         
@@ -404,7 +404,8 @@ class ImageProcessor:
                         window_name=f"Debug: {func_name}", 
                         wait_time=1, 
                         save_folder=base_debug_folder, 
-                        frame_id=step_id
+                        frame_id=step_id,
+                        visualize=visualize
                     )
                    
             else:
@@ -412,7 +413,7 @@ class ImageProcessor:
         
         return self.get_processed()
     
-    def visualize_and_save(self, window_name="Preview", wait_time=0, save_folder=None, frame_id=""):
+    def visualize_and_save(self, window_name="Preview", wait_time=0, save_folder=None, frame_id="",visualize=True):
         """
         Muestra la comparación: Original (Redimensionada) vs Procesada (Real).
         Es mejor bajar la resolución de la original para ver la procesada píxel a píxel 
@@ -475,25 +476,25 @@ class ImageProcessor:
             img_to_show = cv2.resize(combined_img, (new_w, new_h), interpolation=cv2.INTER_AREA)
         else:
             img_to_show = combined_img
-
-        cv2.imshow(window_name, img_to_show)
-        
-        if wait_time == 0:
-            # Bucle infinito hasta pulsar tecla o cerrar ventana
-            while True:
-                key = cv2.waitKey(100) # Chequear cada 100ms
-                
-                # Si se pulsó una tecla válida (distinto de -1) salimos
-                if key != -1:
-                    break
-                
-                # Si se cerró la ventana con la X (propiedad WND_PROP_VISIBLE < 1)
-                if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
-                    print("⚠️ Ventana cerrada manualmente. Continuando ejecución...")
-                    break
-        else:
-            # Si hay un tiempo definido (ej. modo vídeo), usamos el wait normal
-            cv2.waitKey(wait_time)
+        if visualize:
+            cv2.imshow(window_name, img_to_show)
+            
+            if wait_time == 0:
+                # Bucle infinito hasta pulsar tecla o cerrar ventana
+                while True:
+                    key = cv2.waitKey(100) # Chequear cada 100ms
+                    
+                    # Si se pulsó una tecla válida (distinto de -1) salimos
+                    if key != -1:
+                        break
+                    
+                    # Si se cerró la ventana con la X (propiedad WND_PROP_VISIBLE < 1)
+                    if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+                        print("⚠️ Ventana cerrada manualmente. Continuando ejecución...")
+                        break
+            else:
+                # Si hay un tiempo definido (ej. modo vídeo), usamos el wait normal
+                cv2.waitKey(wait_time)
 
         # 3. Guardar en disco (Opcional)
         if save_folder is not None:
