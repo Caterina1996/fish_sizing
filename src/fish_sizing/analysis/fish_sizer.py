@@ -53,10 +53,6 @@ class FishSizer():
                 # Log fish info
                 fish_class = fish.class_name  
                 track_id = fish.track_id  
-                cprint("DISPARITY MAP++++++++++++++++++++++++++++++++++,""yellow")
-                print(self.frame_scene.disparity_map)
-                print(np.unique(self.frame_scene.disparity_map))
-                cprint("DISPARITY MAP++++++++++++++++++++++++++++++++++,""yellow")
                 
                 fish.is_complete(self.frame_scene.disparity_map, debug_path = os.path.join(self.out_path,"debug"), debug_mode=True)
                 
@@ -90,6 +86,8 @@ class FishSizer():
                     
                     # A) Filtrado y Medición 3D
                     current_fish_3d.filter_outliers_HDBSCAN_adaptive()
+                    # current_fish_3d.filter_outliers_HDBSCAN_adaptive() -> NAH
+ 
                     current_fish_3d.get_distance_camera_fish()
 
                     raw_saved = current_fish_3d.save_fish_pointcloud(filtered=False)
@@ -125,8 +123,7 @@ class FishSizer():
         return self.bagfile_fauna
             
     def check_3d(self,fish):    
-        cprint("hey no2","yellow")        
-                
+                        
         is_front_fish = True # Por defecto asumimos que sí
             
         if fish.does_overlap and not self.ignore_overlap:

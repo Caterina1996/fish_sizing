@@ -12,6 +12,7 @@ from sklearn.preprocessing import StandardScaler
 import hdbscan
 import collections
 
+
 from fish_sizing.utils import tools
 from fish_sizing.detection.fish2D import Fish2D, FrameScene
 
@@ -148,9 +149,245 @@ class Fish3D(Fish2D):
         print("Saving pointcloud to: ",save_path)
         o3d.io.write_point_cloud(save_path, pcd)
         return True
-   
+    
+    def filter_outliers_HDBSCAN_adaptive(self, 
+                                         min_cluster_size=40, 
+                                         max_fish_thickness_meters=0.07, # 5 cm de grosor máximo (ajustable)
+                                         debug_plot=False):
+        """
+        Filtrado de Plano de Pez (Fish-Plane Clipping) + Pre-filtro SOR:
+        1. SOR para limpiar la "niebla" flotante (Naranja).
+        2. HDBSCAN para aislar el cuerpo principal del pez.
+        3. PCA para encontrar el eje lateral del pez (Componente 3 = Grosor).
+        4. Recorte de cualquier punto que exceda el grosor físico del pez (Rojo).
+        """
+
         
-    def filter_outliers_HDBSCAN_adaptive(self,
+        if self.pointcloud_raw is None or len(self.pointcloud_raw) < 50:
+            print(colored(f"Nube demasiado pequeña para filtrar (Pez {self.track_id}).", "yellow"))
+            self.pointcloud_filtered = self.pointcloud_raw
+            self.colors_filtered = self.colors
+            self.pointcloud_size_ok = False
+            return
+
+        pts_raw = self.pointcloud_raw
+        colors_raw = self.colors
+
+        # ==========================================================
+        # 1. SOR (Statistical Outlier Removal) - Pre-filtro de niebla
+        # ==========================================================
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(pts_raw[:, :3])
+        pcd.colors = o3d.utility.Vector3dVector(colors_raw[:, ::-1] / 255.0)
+
+        # Filtro Suave para no dañar las aletas/cola
+        cl, ind_sor = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.5)
+        
+        if len(ind_sor) < 20:
+            print(colored(f"⚠️ SOR eliminó demasiados puntos en Pez {self.track_id}.", "red"))
+            self.pointcloud_filtered = pts_raw
+            self.colors_filtered = colors_raw
+            self.pointcloud_size_ok = False
+            return
+
+        # Guardamos los puntos eliminados por el SOR para pintarlos de naranja luego
+        mask_sor = np.zeros(len(pts_raw), dtype=bool)
+        mask_sor[ind_sor] = True
+        pts_removed_sor = pts_raw[~mask_sor, :3]
+
+        # A partir de aquí, usamos SOLO los puntos que sobrevivieron al SOR
+        pts = pts_raw[ind_sor]
+        colors = colors_raw[ind_sor]
+        xyz = pts[:, :3]
+
+        # ==========================================================
+        # 2. HDBSCAN para encontrar la "masa principal"
+        # ==========================================================
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, allow_single_cluster=True)
+        labels = clusterer.fit_predict(xyz)
+
+        unique_labels = set(labels)
+        unique_labels.discard(-1) # Ignorar ruido puro
+
+        if not unique_labels:
+            print(colored(f"HDBSCAN no encontró clusters densos para el Pez {self.track_id}.", "red"))
+            self.pointcloud_filtered = pts
+            self.colors_filtered = colors
+            self.pointcloud_size_ok = False
+            return
+
+        largest_label = max(unique_labels, key=lambda l: np.sum(labels == l))
+        main_cluster_pts = xyz[labels == largest_label]
+
+        if len(main_cluster_pts) < 10:
+            self.pointcloud_filtered = pts
+            self.colors_filtered = colors
+            self.pointcloud_size_ok = False
+            return
+
+        # ==========================================================
+        # 3. PCA: ENCONTRAR EL EJE DEL GROSOR
+        # ==========================================================
+        pca = PCA(n_components=3)
+        pca.fit(main_cluster_pts)
+        
+        thickness_vector = pca.components_[2]
+        centroid = np.median(main_cluster_pts, axis=0)
+
+        # --- SEGURO DE VIDA (Sanity Check) ---
+        cos_angle_with_z = np.abs(np.dot(thickness_vector, [0, 0, 1]))
+        if cos_angle_with_z < 0.5: 
+            print(colored(f"⚠️ AVISO: PCA dudoso en Pez {self.track_id}. (cos={cos_angle_with_z:.2f}). Aumentando margen preventivo.", "yellow"))
+            # max_fish_thickness_meters *= 1.5 
+
+        # ==========================================================
+        # 4. FILTRADO POR GROSOR FÍSICO
+        # ==========================================================
+        vecs_to_centroid = xyz - centroid
+        thickness_distances = np.abs(np.dot(vecs_to_centroid, thickness_vector))
+        half_thickness = max_fish_thickness_meters / 2.0
+        
+        mask_keep = thickness_distances < half_thickness
+
+        # ==========================================================
+        # 5. RECONSTRUIR NUBE
+        # ==========================================================
+        self.pointcloud_filtered = pts[mask_keep]
+        self.colors_filtered = colors[mask_keep]
+        self.pointcloud_size_ok = np.sum(mask_keep) > 10
+
+        # ==========================================================
+        # 6. DEBUG VISUAL UNIFICADO
+        # ==========================================================
+        if debug_plot:
+            geoms_to_draw = []
+
+            # 1. Azul (Pez Mantenido)
+            pcd_kept = o3d.geometry.PointCloud()
+            pcd_kept.points = o3d.utility.Vector3dVector(xyz[mask_keep])
+            pcd_kept.paint_uniform_color([0, 0, 1]) 
+            geoms_to_draw.append(pcd_kept)
+            
+            # 2. Rojo (Cortado por el Grosor del PCA)
+            if np.sum(~mask_keep) > 0:
+                pcd_removed_pca = o3d.geometry.PointCloud()
+                pcd_removed_pca.points = o3d.utility.Vector3dVector(xyz[~mask_keep])
+                pcd_removed_pca.paint_uniform_color([1, 0, 0]) 
+                geoms_to_draw.append(pcd_removed_pca)
+
+            # 3. Naranja (Eliminado inicialmente por el SOR)
+            if len(pts_removed_sor) > 0:
+                pcd_removed_sor = o3d.geometry.PointCloud()
+                pcd_removed_sor.points = o3d.utility.Vector3dVector(pts_removed_sor)
+                pcd_removed_sor.paint_uniform_color([1, 0.5, 0]) # NARANJA
+                geoms_to_draw.append(pcd_removed_sor)
+            
+            # 4. Línea Verde (Vector del grosor/Sándwich)
+            v3_end = centroid + thickness_vector * half_thickness
+            v3_start = centroid - thickness_vector * half_thickness
+            line_set = o3d.geometry.LineSet(
+                points=o3d.utility.Vector3dVector([v3_start, v3_end]),
+                lines=o3d.utility.Vector2iVector([[0, 1]])
+            )
+            line_set.colors = o3d.utility.Vector3dVector([[0, 1, 0]])
+            geoms_to_draw.append(line_set)
+            
+            print(f"📊 Resumen Pez {self.track_id}:")
+            print(f"  - Conservados (Azul): {np.sum(mask_keep)}")
+            print(f"  - Eliminados por Grosor PCA (Rojo): {np.sum(~mask_keep)}")
+            print(f"  - Eliminados por SOR (Naranja): {len(pts_removed_sor)}")
+            
+            o3d.visualization.draw_geometries(geoms_to_draw)
+            
+        
+    def filter_outliers_HDBSCAN_adaptive_saltos_imnproved(self, min_cluster_size=20, z_jump_threshold_abs=0.03, debug_plot=False):
+        pts = self.pointcloud_raw
+        xyz = pts[:, :3]
+
+        # 1. HDBSCAN
+        import hdbscan
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, allow_single_cluster=True)
+        labels = clusterer.fit_predict(xyz)
+
+        # 2. Construir clusters (IGNORAMOS EL RUIDO -1 como clusters individuales)
+        # Dejamos que el ruido desaparezca de la ecuación de los saltos
+        clusters = []
+        for lbl in set(labels):
+            if lbl != -1:
+                clusters.append(np.where(labels == lbl)[0])
+
+        if not clusters:
+            print("No se encontraron clusters válidos.")
+            return
+
+        # 3. Calcular medias y aislar el pez
+        z_means = np.array([pts[c, 2].mean() for c in clusters])
+        sizes = np.array([len(c) for c in clusters])
+        
+        largest_idx = np.argmax(sizes)
+        z_mean_main = z_means[largest_idx] # El centro de gravedad del pez
+
+        # 4. Ordenar clusters por Z
+        order = np.argsort(z_means)
+        ordered_clusters = [clusters[i] for i in order]
+        ordered_means = z_means[order]
+        
+        z_diffs = np.diff(ordered_means)
+        to_keep = np.ones(len(ordered_clusters), dtype=bool)
+
+        jump_threshold = max(z_jump_threshold_abs, np.median(z_diffs) * 2 if len(z_diffs) >= 4 else z_jump_threshold_abs)
+
+        # 5. Aplicar TU lógica de saltos, pero solo sobre clusters densos reales
+        for i, jump in enumerate(z_diffs):
+            if jump > jump_threshold:
+                dist_i = abs(ordered_means[i] - z_mean_main)
+                dist_j = abs(ordered_means[i+1] - z_mean_main)
+
+                if dist_i > dist_j:
+                    to_keep[:i+1] = False
+                else:
+                    to_keep[i+1:] = False
+
+        # 6. Reconstruir
+        kept_idxs = np.concatenate([ordered_clusters[k] for k in range(len(to_keep)) if to_keep[k]])
+        
+        if len(kept_idxs) > 10:
+            self.pointcloud_filtered = pts[kept_idxs]
+            self.colors_filtered = self.colors[kept_idxs]
+            self.pointcloud_size_ok = True
+        else:
+            self.pointcloud_filtered = self.pointcloud_raw
+            self.colors_filtered = self.colors
+            self.pointcloud_size_ok = False
+            
+        # 8) Visualización clara
+        if debug_plot:
+            import open3d as o3d
+            import matplotlib.cm as cm
+
+            cmap = cm.get_cmap("tab20")
+            geoms_kept = []
+            geoms_out  = []
+            for k, idxs in enumerate(ordered_clusters):
+                pcd = o3d.geometry.PointCloud()
+                pcd.points = o3d.utility.Vector3dVector(pts[idxs, :3])
+        
+                if to_keep[k]:
+                    # pcd.paint_uniform_color(cmap(k % 20)[:3])
+                    pcd.paint_uniform_color([0.0, 0.0, 1.0])  # Azul
+                    geoms_kept.append(pcd)
+                else:
+                    # pcd.paint_uniform_color(cmap(k % 20)[:3])
+                    pcd.paint_uniform_color([1.0, 0.0, 0.0]) # rojo
+                    geoms_out.append(pcd)
+            
+            # Crear un eje de coordenadas en el origen, ajusta el tamaño según tu escala
+            frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=10, origin=[0, 0, 0])
+
+            print(f"→ Conservados: {sum(to_keep)}, Eliminados: {len(to_keep) - sum(to_keep)}")
+            o3d.visualization.draw_geometries(geoms_kept + geoms_out)
+        
+    def filter_outliers_HDBSCAN_adaptive_old(self,
         min_cluster_size=10, # tamaño mínimo que debe tener un grupo de puntos para ser considerado un "cluster válido"
         min_samples=2,     # Controla cuántos vecinos necesita un punto para ser considerado central o bien conectado.
         z_jump_threshold_abs=0.07, 

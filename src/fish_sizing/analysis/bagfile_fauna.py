@@ -11,12 +11,12 @@ from fish_sizing.utils import tools
 
 
 class Bagfile_fauna():
-    def __init__(self,out_path):
+    def __init__(self,out_path,gt=None):
         
         # Buffer para acumular datos (Lista de diccionarios)
         # + rápido que concatenar DataFrames en cada iteración
         self.data_buffer: List[Dict[str, Any]] = []
-        
+        self.gt = gt
         self.fish_list = []  
         
         self.out_path = os.path.join(out_path,"results")
@@ -27,7 +27,7 @@ class Bagfile_fauna():
         'frame_id', 'class_name', 'object_id', 'track_id', 
         'is_3D_complete', 'in_image_borders','does_overlap',
         'overlapping_fish_ids', 'fish_direction', 'elevation_deg', 'azimuth_deg', 
-        'raw_length', 'filtered_length', 'fish_dist_from_camera'
+        'raw_length', 'filtered_length', 'gt','fish_dist_from_camera'
         ]
                     
         self.all_fish_df = pd.DataFrame(columns=self.columns_order)
@@ -50,6 +50,7 @@ class Bagfile_fauna():
             'azimuth_deg': fish.azimuth_deg,
             'raw_length': fish.length,
             'filtered_length': fish.filtered_length,
+            'gt': self.gt,
             'fish_dist_from_camera':  fish.fish_dist_from_camera
             }
             
@@ -73,6 +74,7 @@ class Bagfile_fauna():
             'azimuth_deg': None,
             'raw_length': None,
             'filtered_length': None,
+            'gt': self.gt,
             'fish_dist_from_camera': None
         }
         self.data_buffer.append(fish_data)   
@@ -100,7 +102,7 @@ class Bagfile_fauna():
         # Guardar RAW
         self.all_fish_df.to_csv(os.path.join(self.out_path, 'all_fish_info_raw.csv'), index=False)
         
-        # 2. Filtrado Básico
+        # 2. Filtrado Básico (Completos, sin solapamiento, dentro de bordes)
         self.filtered_result_df = self.all_fish_df[
             (self.all_fish_df['is_3D_complete'] == True) &
             (self.all_fish_df['does_overlap'] == False) &
@@ -122,16 +124,42 @@ class Bagfile_fauna():
             )
             resume_raw_df.to_csv(os.path.join(self.out_path, 'resume_raw.csv'))
 
-            # --- APLICAMOS EL FILTRO INTELIGENTE ---
+            # --- APLICAMOS EL FILTRO INTELIGENTE (TODOS LOS PECES OK) ---
             self.resume_filtered_df = self._filter_outliers_per_track(
                 self.filtered_result_df, 
                 min_tracks_abs=3, 
                 min_tracks_to_filter=5
             )
-            
             self.resume_filtered_df.to_csv(os.path.join(self.out_path, 'resume_filtered_smart.csv'), index=False)
             
-            print(f"✅ Resultados guardados en: {self.out_path}")
+            # =========================================================================
+            # 4. NUEVO: FILTRADO ESTRICTO POR ÁNGULO Z (< 30º)
+            # =========================================================================
+            angle_threshold = 30.0
+            
+            # Filtramos usando el valor absoluto de la elevación (da igual si mira hacia arriba/abajo en Z)
+            df_angle_ok = self.filtered_result_df[
+                self.filtered_result_df['elevation_deg'].notna() & 
+                (self.filtered_result_df['elevation_deg'].abs() <= angle_threshold)
+            ].copy()
+            
+            # Guardamos todos los frames individuales que cumplen el ángulo
+            df_angle_ok.to_csv(os.path.join(self.out_path, 'all_angle_ok_fish.csv'), index=False)
+
+            if not df_angle_ok.empty:
+                # Aplicamos el filtro inteligente SOLO a los frames con buen ángulo
+                self.resume_filtered_angle_df = self._filter_outliers_per_track(
+                    df_angle_ok, 
+                    min_tracks_abs=3, 
+                    min_tracks_to_filter=5
+                )
+                self.resume_filtered_angle_df.to_csv(os.path.join(self.out_path, 'resume_filtered_smart_angle_ok.csv'), index=False)
+                print(f"✅ Resultados extra (Ángulo Z <= {angle_threshold}º) guardados con éxito.")
+            else:
+                print(f"⚠️ Ningún frame de pez cumplió la condición de ángulo Z <= {angle_threshold}º.")
+            # =========================================================================
+
+            print(f"✅ Resultados totales guardados en: {self.out_path}")
         else:
             print("⚠️ No quedaron peces válidos tras el filtrado (Complete & Inside Borders).")
     

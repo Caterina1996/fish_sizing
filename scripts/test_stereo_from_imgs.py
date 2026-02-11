@@ -48,6 +48,14 @@ MODEL_PATH="/home/slimbook/models/25c_ckpt+PISCINA_NEW/yv11l_25ckpt+pool_new/wei
 # MODEL_PATH = "/home/slimbook/models/yv11l/ylarge_d18_poolv2r_lantytr_nocturnes/weights/best.pt"
 CONF_THR = 0.5
 
+gt = 29.1
+
+# peix/marca	t_tot	t_std
+# vermella	    29,1	25,3
+# verda	        29,2	25,8
+# negra	        26,6	23,4
+# sense	        32,3	28,7
+
 
 # OUT_PATH = "/home/slimbook/fish_sizing/out/test_export/2025-05-08-11-18-25_1/"
 OUT_PATH = "/home/slimbook/fish_sizing/out/LIMIA/1peix/2025-08-21-13-33-43"
@@ -227,7 +235,7 @@ def main():
     )
     
     fish_detector = FishDetector(model_path,conf_thr=CONF_THR)
-    bagfile_fauna = Bagfile_fauna(out_path)
+    bagfile_fauna = Bagfile_fauna(out_path,gt)
     
     stereo = StereoVision(calibration_data=camera_info, config_path=stereo_config_path,scale=decimation)
 
