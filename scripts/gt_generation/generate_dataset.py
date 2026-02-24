@@ -38,7 +38,7 @@ TOPICS_DICT = {
 
 
 
-BAGFILE_PATH="//home/slimbook/bagfiles/peixos_morts_piscina_v3/2025_05_08/11_14_52/stereo_camera_images_2025-05-08-11-14-53_0.bag"
+BAGFILE_PATH="/home/slimbook/bagfiles/peixos_morts_piscina_v3/2025_05_08/11_53_31/stereo_camera_images_2025-05-08-11-53-31_0.bag"
 # BAGFILE_PATH="//home/slimbook/bagfiles/LIMA/2025/2025_08_21/test_comprsesion/13_34_24/stereo_camera_images_2025-08-21-13-34-25_0.bag"
 lanty = "L1"
 
@@ -48,7 +48,34 @@ rename = True
 
 MODEL_PATH = "/home/slimbook/models/yv11l/ylarge_d18_poolv2r_lantytr_nocturnes/weights/best.pt"
 # OUT_PATH = "/home/slimbook/fish_sizing/out/test_export/2025-05-08-11-18-25_1/"
-OUT_PATH = "/home/slimbook/fish_sizing/out/overfitting_dataset/"
+OUT_PATH = "/home/slimbook/fish_sizing/out/overlapping_dataset/"
+
+SELECTED_PIPELINE = "none"
+
+# --- CONFIGURACIÓN DE PIPELINES ---
+PROCESSING_PIPELINES = {
+    "basic": [
+        # 1. Igualar luz
+        ("match_histograms", {"reference": "left"}, True),
+        
+        # 2. Convertir a gris ignorando el rojo
+        ("convert_to_custom_grayscale", {}, True),
+        
+        # 3. CLAHE 
+       ("apply_clahe", {"clip_limit": 1.0, "grid_size": (8,8)}, True)      
+    ],
+
+    "dehazing": [
+        ("apply_dehaze", {"omega": 0.85,"stereo_consistency":False}, True), 
+        # ("match_brightness_linear", {"reference": "left"}, False),
+        # ("convert_to_custom_grayscale", {}, True),
+        # ("apply_clahe",             {"clip_limit": 1.0}, True),
+        # ("match_histograms", {"reference": "left"}, True),
+    ],
+    "none":[]
+    
+}
+
 
 # --- FUNCIONES AUXILIARES ---
 
@@ -183,14 +210,22 @@ def main():
             img_proc.downsample(0.5)
             
             # C) Obtener resultados
-            processed_l, processed_r = img_proc.get_processed()
+            # processed_l, processed_r = img_proc.get_processed()
+            fname= bag_id+"_f_"+str(count)
+            
+            processed_l, processed_r = img_proc.run_pipeline(
+                PROCESSING_PIPELINES[SELECTED_PIPELINE], 
+                # base_debug_folder = out_path,
+                frame_id = fname,
+                visualize = False
+            )
                     
             # D) Guardar downsampled
             # fname = f"{timestamp}"
-            fname= bag_id+"_f_"+str(count)
-            if count % 20 ==0:
-                cv2.imwrite(os.path.join(out_path, fname+"_left.png"), processed_l)
-                # cv2.imwrite(os.path.join(out_path, fname+"_right.png"), processed_r)
+
+            if count % 6 ==0:
+                # cv2.imwrite(os.path.join(out_path, fname+"_left.png"), processed_l)
+                cv2.imwrite(os.path.join(out_path, fname+"_right.png"), processed_r)
                 
             count += 1
             print(f"Procesado frame par: {count}", end='\r')

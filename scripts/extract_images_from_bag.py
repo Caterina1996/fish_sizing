@@ -20,12 +20,22 @@ PATH_MAPPINGS = {
 
 USE_DOCKER = True
 
+# TOPICS_DICT = { 
+#     "left":   "/stereo_ch3/left/image_raw",
+#     "right":  "/stereo_ch3/right/image_raw", 
+#     "info_l": "/stereo_ch3/left/camera_info",
+#     "info_r": "/stereo_ch3/right/camera_info"
+# }
+
 TOPICS_DICT = { 
-    "left":   "/stereo_ch3/left/image_raw",
-    "right":  "/stereo_ch3/right/image_raw", 
+    "left":   "/stereo_ch3/left/image_raw/compressed",
+    "right":  "/stereo_ch3/right/image_raw/compressed", 
     "info_l": "/stereo_ch3/left/camera_info",
     "info_r": "/stereo_ch3/right/camera_info"
 }
+
+
+OUT_PATH = "/home/slimbook/fish_sizing/out/test_export"
 
 # --- FUNCIONES AUXILIARES ---
 
@@ -54,7 +64,7 @@ def main():
                         help="Ruta al bagfile")
     
     parser.add_argument("--out_path", "-out", type=str, 
-                        default="/home/slimbook/fish_sizing/out/test_export",
+                        default=OUT_PATH,
                         help="Carpeta donde se guardarán las imágenes procesadas")
     
     parser.add_argument("--topic", type=str, default="left", choices=["left", "right"],

@@ -144,7 +144,7 @@ class Bagfile_fauna():
             self.resume_filtered_df.to_csv(os.path.join(self.out_path, 'resume_filtered_smart.csv'), index=False)
             
             # 4. FILTRADO ESTRICTO POR ÁNGULO Z (< 30º)
-            angle_threshold = 30.0
+            angle_threshold = 20.0
             
             df_angle_ok = self.filtered_result_df[
                 self.filtered_result_df['elevation_deg'].notna() & 
@@ -168,7 +168,7 @@ class Bagfile_fauna():
         else:
             print("⚠️ No quedaron peces válidos tras el filtrado.")
     
-    def _filter_outliers_per_track(self, df_input, min_tracks_abs=3, min_tracks_to_filter=5):
+    def _filter_outliers_per_track(self, df_input, min_tracks_abs=3, min_tracks_to_filter=3):
         resume_list = []
         
         for track_id, track_data in df_input.groupby('track_id'):

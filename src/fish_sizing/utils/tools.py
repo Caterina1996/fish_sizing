@@ -4,10 +4,11 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import json
-
+import cv2
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import plotly.graph_objects as go
+from termcolor import cprint
 
 # Stereo camera config
 baseline_m = abs(-179.77544 / 1469.28052)
@@ -227,6 +228,6 @@ def plot_fish_with_dual_cameras_plotly(points, direction, length, object_id, out
 
     html_path = os.path.join(out_dir, f"fish_{object_id}.html")
     fig.write_html(html_path)
-    print(f"✅ Saved interactive 3D plot to: {html_path}")
+    cprint(f"✅ Saved interactive 3D plot to: {html_path}","cyan")
 
     return html_path

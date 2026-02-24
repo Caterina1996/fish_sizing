@@ -111,9 +111,12 @@ class CvBridge:
                 # Si no reconoce el bayer, al menos lo pasamos a BGR para que no falle
                 img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
                 
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                
         # 5. Si ya es color (3 canales) pero está en RGB, pasar a BGR para OpenCV
         elif len(img.shape) == 3 and "rgb" in fmt_str:
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            # img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         return img
 
@@ -253,8 +256,16 @@ class BagProcessor:
                 ts = msg.header.stamp.to_nsec()
                 
                 try:
-                    cv_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+                    # --- CORRECCIÓN AQUÍ ---
+                    # Detectamos si es comprimido mirando el nombre del topic o el tipo de mensaje
+                    if "compressed" in topic or hasattr(msg, 'format'):
+                        cv_img = self.bridge.imgcompressed_to_cv2(msg, desired_encoding="bgr8")
+                    else:
+                        cv_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+                    # -----------------------
                 except Exception as e:
+                    # RECOMENDACIÓN: Imprime el error al menos una vez para no ir a ciegas
+                    print(f"❌ Error decodificando frame en {topic}: {e}")
                     continue
 
                 # 1. Meter en el buffer correspondiente
@@ -265,14 +276,12 @@ class BagProcessor:
                     buffer_right[ts] = cv_img
                     cnt_r += 1
 
-                # 2. Intentar buscar pareja en el OTRO buffer
-                # (No buscamos exactitud, buscamos al "vecino más cercano" dentro de la tolerancia)
+                # ... (El resto del código de emparejamiento sigue igual) ...
                 
                 match_ts = None
-                best_diff = tolerance_ns # Empezamos con el máximo permitido
+                best_diff = tolerance_ns 
                 
                 if topic == self.topics['left']:
-                    # Acaba de llegar L, buscamos en R
                     for r_ts in list(buffer_right.keys()):
                         diff = abs(ts - r_ts)
                         if diff < best_diff:
@@ -280,13 +289,11 @@ class BagProcessor:
                             match_ts = r_ts
                     
                     if match_ts is not None:
-                        # ¡Encontrado! Devolvemos el par
                         yield ts, cv_img, buffer_right.pop(match_ts)
-                        del buffer_left[ts] # Ya no la necesitamos
+                        del buffer_left[ts]
                         cnt_match += 1
 
                 else: 
-                    # Acaba de llegar R, buscamos en L
                     for l_ts in list(buffer_left.keys()):
                         diff = abs(ts - l_ts)
                         if diff < best_diff:
@@ -294,14 +301,12 @@ class BagProcessor:
                             match_ts = l_ts
                     
                     if match_ts is not None:
-                        # ¡Encontrado!
                         yield match_ts, buffer_left.pop(match_ts), cv_img
                         del buffer_right[ts]
                         cnt_match += 1
 
-                # 3. Limpieza de seguridad (para no llenar la RAM si una cámara muere)
                 if len(buffer_left) > 50:
-                    del buffer_left[min(buffer_left.keys())] # Borrar la más vieja
+                    del buffer_left[min(buffer_left.keys())]
                 if len(buffer_right) > 50:
                     del buffer_right[min(buffer_right.keys())]
 
@@ -309,8 +314,6 @@ class BagProcessor:
         print(f"Total Izquierda: {cnt_l}")
         print(f"Total Derecha:   {cnt_r}")
         print(f"Pares Unidos:    {cnt_match}")
-        if cnt_match == 0:
-            print("❌ ERROR CRÍTICO: No se han podido emparejar. Revisa los nombres de los topics o aumenta 'tolerance_ns'.")
 
     def export_images_to_disk(self, output_folder, topic_key='left', processing_func=None,frames_base_name=None):
         """

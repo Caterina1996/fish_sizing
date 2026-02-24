@@ -152,7 +152,7 @@ class Fish3D(Fish2D):
     
     def filter_outliers_HDBSCAN_adaptive(self, 
                                          min_cluster_size=40, 
-                                         max_fish_thickness_meters=0.07, # 5 cm de grosor máximo (ajustable)
+                                         max_fish_thickness_meters=0.08, # 5 cm de grosor máximo (ajustable)
                                          debug_plot=False):
         """
         Filtrado de Plano de Pez (Fish-Plane Clipping) + Pre-filtro SOR:

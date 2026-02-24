@@ -5,6 +5,7 @@ import sys
 import cv2
 import numpy as np
 from termcolor import cprint
+from natsort import natsorted
 
 from fish_sizing.utils.bag_processor import BagProcessor
 from fish_sizing.utils.image_processor import ImageProcessor
@@ -35,63 +36,58 @@ TOPICS_DICT = {
 
 # BAGFILE_PATH="//home/slimbook/bagfiles/LIMA/2025/2025_08_21/test_comprsesion/compressed/13_34_24/stereo_camera_images_2025-08-21-13-34-25_0_compressed.bag"
 
-BAGFILE_PATH="//home/slimbook/bagfiles/LIMA/Llobarros/2024_11_27/12_00_27/stereo_camera_images_2024-11-27-12-00-28_0.bag"
+BAGFILE_PATH="/home/slimbook/bagfiles/Escenaris/Escenari_1/2024_11_28/13_07_38/stereo_camera_images_2024-11-28-13-07-39_0.bag"
 
 # model_path="/home/slimbook/yolov8/trained_models/fish_detector.pt"
 # model_path="/home/slimbook/models/Segmentation/pool/last_pool_nano_binary.pt"
 # model_path="/home/slimbook/models/Segmentation/pool/25ckpt+POOL_y11_large/last.pt"
 # model_path="//home/slimbook/models/Segmentation/pool/yv11l_25ckpt+pool_new/weights/last.pt"
 
-# model_path="/home/slimbook/DATA/models/yv11l_25ckpt+pool_new/weights/last.pt" -> Provar aquest!!
+# MODEL_PATH="/home/slimbook/models/25c_ckpt+PISCINA_NEW/yv11l_25ckpt+pool_new/weights/last.pt" #-> Provar aquest!!
 
-MODEL_PATH = "/home/slimbook/models/yv11l/ylarge_d18_poolv2r_lantytr_nocturnes/weights/best.pt"
-CONF_THR = 0.3
+MODEL_PATH="/home/slimbook/models/binary/yv11m/yv11m_binary_Pool_revisada_no_duplicada_from scractch/weights/best.pt"
+# MODEL_PATH = "/home/slimbook/models/yv11l/ylarge_d18_poolv2r_lantytr_nocturnes/weights/best.pt"
+CONF_THR = 0.5
+
+gt = 28.9
+# gt =None
+Visualize_online = False
+
+
+# peix/marca	t_tot	t_std
+# vermella	    29,1	25,3
+# verda	        29,2	25,8
+# negra	        26,6	23,4
+# sense	        32,3	28,7
 
 
 # OUT_PATH = "/home/slimbook/fish_sizing/out/test_export/2025-05-08-11-18-25_1/"
-OUT_PATH = "/home/slimbook/fish_sizing/out/Llobarros/2024_11_27/12_00_27/"
+OUT_PATH = "/home/slimbook/fish_sizing/out/Escenaris/Escenari_1/2024_11_28/13_07_38/"
+# IN_PATH = "/home/slimbook/fish_sizing/out/Llobarros/2024_11_27/12_00_27/"
 
-
-SELECTED_PIPELINE = "dehazing"
+SELECTED_PIPELINE = "basic"
 
 # --- CONFIGURACIÓN DE PIPELINES ---
 PROCESSING_PIPELINES = {
     "basic": [
-        # 1. Igualar luz (No guardamos, es un paso intermedio sutil)
-        ("match_histograms", {"reference": "left"}, True),
+        # 1. Igualar luz
+        ("match_brightness_linear", {"reference": "left"}, False),
         
-        # 2. Convertir a gris pasando del rojo
+        # 2. Convertir a gris ignorando el rojo
         ("convert_to_custom_grayscale", {}, True),
         
-        # 3. CLAHE (Guardamos, paso crítico que cambia mucho la imagen)
-        ("apply_clahe", {"clip_limit": 2.0, "grid_size": (8,8)}, True)
-        
+        # 3. CLAHE 
+       ("apply_clahe", {"clip_limit": 2.0, "grid_size": (8,8)}, True)      
     ],
 
     "dehazing": [
-        # Aquí queremos ver qué tal funciona el dehaze, así que True
         ("apply_dehaze",            {"omega": 0.85}, True), 
         ("match_brightness_linear", {"reference": "left"}, False),
-        ("convert_to_custom_grayscale", {}, True),
-        ("apply_clahe",             {"clip_limit": 2.0}, True)
+        # ("convert_to_custom_grayscale", {}, True),
+        ("apply_clahe",             {"clip_limit": 2.0}, True),
+        ("match_histograms", {"reference": "left"}, True),
     ]
 }
-
-
-
-# img_proc.apply_dehaze(omega=0.85, window_size=15,stereo_consistency=True) #-> Revisar esto xq ahora mismo no va be/no interesa
-# # img_proc.visualize_and_save()
-# img_l, img_r = img_proc.get_processed()
-
-# img_proc.match_histograms(reference="left") # Igualar brillos
-# # img_proc.visualize_and_save()
-# img_proc.convert_to_custom_grayscale()
-# # img_proc.visualize_and_save()
-# img_proc.apply_clahe()
-# # img_proc.visualize_and_save()
-# img_proc.match_histograms(reference="left")
-# # img_proc.visualize_and_save()
-# processed_l, processed_r = img_proc.get_processed()
 
 
 # --- FUNCIONES AUXILIARES ---
@@ -109,6 +105,50 @@ def transform_path2docker(path: str) -> str:
             
     return path
 
+def stream_stereo_from_folder(folder_path):
+    """
+    Generador que lee pares de imágenes (left/right) desde una carpeta.
+    Espera nombres tipo: '...original_left.png' y '...original_right.png'
+    """
+    # Extensiones válidas
+    valid_exts = ('.png', '.jpg', '.jpeg', '.bmp', '.tif')
+    
+    # 1. Listar archivos y filtrar solo los LEFT
+    all_files = os.listdir(folder_path)
+    left_files = [f for f in all_files if "left" in f and f.lower().endswith(valid_exts)]
+    
+    # 2. Ordenar naturalmente (1, 2, ... 10)
+    left_files = natsorted(left_files)
+    
+    print(f"📂 Encontrados {len(left_files)} pares de imágenes en {folder_path}")
+
+    for f_left in left_files:
+        # Construir el nombre del archivo RIGHT asumiendo simetría en el nombre
+        # Ejemplo: frame_0_original_left.png -> frame_0_original_right.png
+        f_right = f_left.replace("left", "right")
+        
+        path_l = os.path.join(folder_path, f_left)
+        path_r = os.path.join(folder_path, f_right)
+        
+        # Verificar que existe la pareja derecha
+        if not os.path.exists(path_r):
+            print(f"⚠️ Aviso: No se encontró la pareja derecha para {f_left}. Saltando.")
+            continue
+            
+        # Cargar imágenes
+        img_l = cv2.imread(path_l)
+        img_r = cv2.imread(path_r)
+        
+        if img_l is None or img_r is None:
+            print(f"❌ Error leyendo imágenes: {f_left}")
+            continue
+            
+        # Usamos el nombre del archivo como 'timestamp' o ID para mantener coherencia
+        frame_id_simulated = f_left.split(".")[0] 
+        
+        # Yield (devuelve los valores uno a uno, igual que el bag_proc)
+        yield frame_id_simulated, img_l, img_r
+
 
 
 # --- MAIN ---
@@ -121,6 +161,9 @@ def main():
 
     parser.add_argument("--out_path", "-out", type=str, help="Carpeta donde se guardarán las imágenes procesadas",
                         default=OUT_PATH)
+    
+    parser.add_argument("--images_source_dir", type=str, default=None,
+                        help="Si se especifica, lee imágenes de esta carpeta en lugar del bagfile")
     
     parser.add_argument("--topic", type=str, default="left", choices=["left", "right"],help="Qué cámara exportar")
     
@@ -154,11 +197,12 @@ def main():
     bag_file = transform_path2docker(args.bag_file)
     out_path = transform_path2docker(args.out_path)
     model_path = transform_path2docker(args.model_path)
-    stereo_config_path = transform_path2docker(args.stereo_config)
+    stereo_config_path = transform_path2docker(args.stereo_config)  
     
     args.out_path = out_path
     args.model_path = model_path
     args.stereo_config = stereo_config_path
+
     
     decimation = args.decimation
     save_scene_pc = True
@@ -192,7 +236,7 @@ def main():
     )
     
     fish_detector = FishDetector(model_path,conf_thr=CONF_THR)
-    bagfile_fauna = Bagfile_fauna(out_path)
+    bagfile_fauna = Bagfile_fauna(out_path,gt)
     
     stereo = StereoVision(calibration_data=camera_info, config_path=stereo_config_path,scale=decimation)
 
@@ -204,8 +248,21 @@ def main():
     cprint(f"🚀 Iniciando procesamiento y exportación a: {out_path}", "cyan")
     
     count = 0
+    
+    # Definir el iterador (fuente de datos)
+    if args.images_source_dir:
+        # A) Modo Carpeta
+        source_dir = transform_path2docker(args.images_source_dir)
+        cprint(f"📂 Modo Carpeta: Leyendo desde {source_dir}", "cyan")
+        image_iterator = stream_stereo_from_folder(transform_path2docker(source_dir))
+    else:
+        # B) Modo Bagfile (Tu código original)
+        cprint(f"📂 Modo Bagfile: Leyendo {bag_file}", "cyan")
+        image_iterator = bag_proc.stream_stereo_pairs()
+    
+    
     # Usamos stream_stereo_pairs porque necesitamos AMBAS imágenes para rectificar
-    for timestamp, img_l_raw, img_r_raw in bag_proc.stream_stereo_pairs():
+    for timestamp, img_l_raw, img_r_raw in image_iterator:
     
         # if count > 20:
         #     break
@@ -242,13 +299,14 @@ def main():
             
             processed_l, processed_r = img_proc.get_processed()
             
-            cv2.imwrite(os.path.join(out_path, fname+"original_left.png"), processed_l)
-            cv2.imwrite(os.path.join(out_path, fname+"original_right.png"), processed_r)
+            cv2.imwrite(os.path.join(out_path, fname+"_original_left.png"), processed_l)
+            cv2.imwrite(os.path.join(out_path, fname+"_original_right.png"), processed_r)
             
             processed_l, processed_r = img_proc.run_pipeline(
                 PROCESSING_PIPELINES[args.selected_pipeline], 
                 base_debug_folder = out_path,
-                frame_id = fname
+                frame_id = fname,
+                visualize = Visualize_online
             )
 
             # SAVE IMAGES IF THEY CONTAIN FISH
@@ -266,11 +324,11 @@ def main():
                                     img_r =processed_r, 
                                     strips = strips, 
                                     use_wls=True, 
-                                    debug=True, 
+                                    debug=False, 
                                     debug_path = out_path)
     
             # Inyectar disparidad en la escena y validar peces
-            frame_scene.disparity_image = disparity_map
+            frame_scene.disparity_map = disparity_map
            
 
             # 2.1 Reproyectar toda la imagen a XYZ
@@ -293,7 +351,7 @@ def main():
                                    stereo =stereo,
                                    args = args)
             
-            bagfile_fauna =fish_sizer.measure_fish()
+            bagfile_fauna = fish_sizer.measure_fish()
             
             # Save scene
             scene_pcd = stereo.extract_point_cloud(scene_points_3d, img_l, mask=valid_disp_mask)

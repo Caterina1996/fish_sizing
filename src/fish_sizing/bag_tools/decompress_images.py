@@ -205,7 +205,7 @@ def decompress_all_directory(input_dir_path, output_dir_path):
 
 # --------------------------------------------------------------------------------------------------------
 
-# python /home/slimbook/fish_sizing/src/fish_sizing/utils/decompress_images.py --input_dir /home/slimbook/bagfiles/LIMA/2025/2025_08_21/selec2/t
+# python /home/slimbook/fish_sizing/src/fish_sizing/utils/decompress_images.py --input_dir /home/slimbook/bagfiles/LIMA/2025/Lanty_2/2025_08_20/test
 if __name__ == "__main__":
     logging_configuration()
     parser = argparse.ArgumentParser(description="Decompress images according to encoding")

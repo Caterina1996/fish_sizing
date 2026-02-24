@@ -36,7 +36,7 @@ TOPICS_DICT = {
 
 # BAGFILE_PATH="//home/slimbook/bagfiles/LIMA/2025/2025_08_21/test_comprsesion/compressed/13_34_24/stereo_camera_images_2025-08-21-13-34-25_0_compressed.bag"
 
-BAGFILE_PATH="//home/slimbook/bagfiles/LIMA/2025/2025_08_21/13_33_03/stereo_camera_images_2025-08-21-13-33-43_1.bag"
+BAGFILE_PATH="/home/slimbook/bagfiles/Escenaris/Escenari_2/2024_11_28/13_47_08/stereo_camera_images_2024-11-28-13-47-08_0.bag"
 
 # model_path="/home/slimbook/yolov8/trained_models/fish_detector.pt"
 # model_path="/home/slimbook/models/Segmentation/pool/last_pool_nano_binary.pt"
@@ -48,7 +48,10 @@ MODEL_PATH="/home/slimbook/models/25c_ckpt+PISCINA_NEW/yv11l_25ckpt+pool_new/wei
 # MODEL_PATH = "/home/slimbook/models/yv11l/ylarge_d18_poolv2r_lantytr_nocturnes/weights/best.pt"
 CONF_THR = 0.5
 
-gt = 29.1
+# gt = 29.1
+gt =None
+Visualize_online = False
+
 
 # peix/marca	t_tot	t_std
 # vermella	    29,1	25,3
@@ -58,7 +61,7 @@ gt = 29.1
 
 
 # OUT_PATH = "/home/slimbook/fish_sizing/out/test_export/2025-05-08-11-18-25_1/"
-OUT_PATH = "/home/slimbook/fish_sizing/out/LIMIA/1peix/2025-08-21-13-33-43"
+OUT_PATH = "/home/slimbook/fish_sizing/out/Escenari_2/2024_11_28/13_47_08/sgbm/"
 # IN_PATH = "/home/slimbook/fish_sizing/out/Llobarros/2024_11_27/12_00_27/"
 
 SELECTED_PIPELINE = "basic"
@@ -304,7 +307,8 @@ def main():
             processed_l, processed_r = img_proc.run_pipeline(
                 PROCESSING_PIPELINES[args.selected_pipeline], 
                 base_debug_folder = out_path,
-                frame_id = fname
+                frame_id = fname,
+                visualize = Visualize_online
             )
 
             # SAVE IMAGES IF THEY CONTAIN FISH
@@ -322,7 +326,7 @@ def main():
                                     img_r =processed_r, 
                                     strips = strips, 
                                     use_wls=True, 
-                                    debug=True, 
+                                    debug=False, 
                                     debug_path = out_path)
     
             # Inyectar disparidad en la escena y validar peces

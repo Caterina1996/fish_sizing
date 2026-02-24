@@ -56,6 +56,7 @@ class FishDetector:
             exist_ok=True,
             persist=True, 
             verbose=False,
+            show_boxes=False,
             tracker=self.tracker
         )
         
