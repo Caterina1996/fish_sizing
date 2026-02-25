@@ -7,7 +7,7 @@ import os
 import numpy as np
 
 from termcolor import cprint
-from fish_sizing.utils.image_processor import ImageProcessor
+from fish_sizing.img_processor.image_processor import ImageProcessor
 from fish_sizing.utils import tools
 
 

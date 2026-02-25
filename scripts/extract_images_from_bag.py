@@ -7,8 +7,8 @@ import numpy as np
 from termcolor import cprint
 
 
-from fish_sizing.utils.bag_processor import BagProcessor
-from fish_sizing.utils.image_processor import ImageProcessor
+from fish_sizing.bag_tools.bag_processor import BagProcessor
+from fish_sizing.img_processing.image_processor import ImageProcessor
 
 
 # --- CONFIGURACIÓN ---

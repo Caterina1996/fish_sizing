@@ -7,14 +7,14 @@ import numpy as np
 from termcolor import cprint
 from natsort import natsorted
 
-from fish_sizing.utils.bag_processor import BagProcessor
-from fish_sizing.utils.image_processor import ImageProcessor
+from fish_sizing.bag_tools.bag_processor import BagProcessor
+from fish_sizing.img_processing.image_processor import ImageProcessor
 from fish_sizing.detection.fish2D import Fish2D, FrameScene  # pot ser aquest import ens el podem estalviar
 from fish_sizing.stereo.stereo import StereoVision
 from fish_sizing.detection.fish_detector import  FishDetector
 from fish_sizing.measurement.fish3D import  Fish3D
 from fish_sizing.analysis.bagfile_fauna import  Bagfile_fauna
-from fish_sizing.analysis.fish_sizer import FishSizer
+from fish_sizing.measurement.fish_sizer import FishSizer
 
 
 # --- CONFIGURACIÓN ---
@@ -22,7 +22,9 @@ PATH_MAPPINGS = {
     "/home/slimbook/bagfiles": "/home/rosuser/dataset/bagfiles",
     "/home/slimbook/fish_sizing/out": "/home/rosuser/repo/out",
     "/home/slimbook/models": "/home/rosuser/dataset/models/",
-    "home/slimbook/fish_sizing/config" :"/home/rosuser/repo/config/"
+    "/home/slimbook/fish_sizing/config" :"/home/rosuser/repo/config/",
+    "/media/slimbook/easystore": "/home/rosuser/easystore"
+    # "/media/slimbook/easystore/results_fish_sizing": "/home/rosuser/dataset/results_fish_sizing", 
 }
 
 USE_DOCKER = True
@@ -36,7 +38,7 @@ TOPICS_DICT = {
 
 # BAGFILE_PATH="//home/slimbook/bagfiles/LIMA/2025/2025_08_21/test_comprsesion/compressed/13_34_24/stereo_camera_images_2025-08-21-13-34-25_0_compressed.bag"
 
-BAGFILE_PATH="/home/slimbook/bagfiles/Escenaris/Escenari_1/2024_11_28/13_07_38/stereo_camera_images_2024-11-28-13-07-39_0.bag"
+BAGFILE_PATH="/home/slimbook/bagfiles/peixos_morts_piscina_v3/2025_05_08/11_17_18/stereo_camera_images_2025-05-08-11-17-18_0.bag"
 
 # model_path="/home/slimbook/yolov8/trained_models/fish_detector.pt"
 # model_path="/home/slimbook/models/Segmentation/pool/last_pool_nano_binary.pt"
@@ -45,13 +47,15 @@ BAGFILE_PATH="/home/slimbook/bagfiles/Escenaris/Escenari_1/2024_11_28/13_07_38/s
 
 # MODEL_PATH="/home/slimbook/models/25c_ckpt+PISCINA_NEW/yv11l_25ckpt+pool_new/weights/last.pt" #-> Provar aquest!!
 
-MODEL_PATH="/home/slimbook/models/binary/yv11m/yv11m_binary_Pool_revisada_no_duplicada_from scractch/weights/best.pt"
+MODEL_PATH="/home/slimbook/models/binary/yv11m/Pool_v5-revisada_no_duplicats_from_ckpt/40e_finetune_2/weights/last.pt"
 # MODEL_PATH = "/home/slimbook/models/yv11l/ylarge_d18_poolv2r_lantytr_nocturnes/weights/best.pt"
 CONF_THR = 0.5
 
-gt = 28.9
+gt =  33.5
 # gt =None
 Visualize_online = False
+
+use_wls = True
 
 
 # peix/marca	t_tot	t_std
@@ -62,10 +66,10 @@ Visualize_online = False
 
 
 # OUT_PATH = "/home/slimbook/fish_sizing/out/test_export/2025-05-08-11-18-25_1/"
-OUT_PATH = "/home/slimbook/fish_sizing/out/Escenaris/Escenari_1/2024_11_28/13_07_38/"
+OUT_PATH = "/media/slimbook/easystore/results_fish_sizing/Peixos_piscina/1_peix/2025_05_08/11_17_18-0/"
 # IN_PATH = "/home/slimbook/fish_sizing/out/Llobarros/2024_11_27/12_00_27/"
 
-SELECTED_PIPELINE = "basic"
+SELECTED_PIPELINE = "dehazing"
 
 # --- CONFIGURACIÓN DE PIPELINES ---
 PROCESSING_PIPELINES = {
@@ -323,7 +327,7 @@ def main():
                                     img_l = processed_l, 
                                     img_r =processed_r, 
                                     strips = strips, 
-                                    use_wls=True, 
+                                    use_wls=use_wls, 
                                     debug=False, 
                                     debug_path = out_path)
     
@@ -355,7 +359,11 @@ def main():
             
             # Save scene
             scene_pcd = stereo.extract_point_cloud(scene_points_3d, img_l, mask=valid_disp_mask)
-            scene_ply_name = os.path.join(out_path, f"{fname}_scene.ply")
+            
+            frame_dir = os.path.join(out_path, f"{count}")
+            os.makedirs(frame_dir, exist_ok=True)
+            scene_ply_name = os.path.join(frame_dir, f"{fname}_scene.ply")
+            
             stereo.save_point_cloud(scene_pcd,save_path=scene_ply_name)
         
         else:

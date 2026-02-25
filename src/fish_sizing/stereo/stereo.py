@@ -46,6 +46,8 @@ class StereoVision:
             self.FOCAL = raw_fx * scale
             self.CX = raw_cx * scale
             self.CY = raw_cy * scale
+            
+            self.image_channels = 1 # TODO repassar
 
             tx_right = P_right[0, 3]
             self.BASELINE = abs(tx_right / raw_fx)
@@ -92,8 +94,8 @@ class StereoVision:
             minDisparity=s_cfg['min_disparity'],
             numDisparities=self.num_disp,
             blockSize=self.block_size,
-            P1=s_cfg['p1_factor'] * 3 * self.block_size**2,
-            P2=s_cfg['p2_factor'] * 3 * self.block_size**2,
+            P1=s_cfg['p1_factor'] * self.image_channels * self.block_size**2,
+            P2=s_cfg['p2_factor'] * self.image_channels * self.block_size**2,
             disp12MaxDiff=s_cfg['disp12_max_diff'],
             uniquenessRatio=s_cfg['uniqueness_ratio'],
             speckleWindowSize=s_cfg['speckle_window_size'],

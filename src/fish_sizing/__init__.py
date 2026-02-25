@@ -15,9 +15,9 @@
 # from .analysis.bagfile_fauna import Bagfile_fauna
 
 # --- 4. Utilidades (Carpeta 'utils') ---
-from .utils.image_processor import ImageProcessor
-# OJO: En tu tree pone 'bag_procesor.py' (con una sola 's'), asegúrate de escribirlo igual
-from .utils.bag_processor import BagProcessor 
+# from .img_processor.image_processing import ImageProcessor
+# # OJO: En tu tree pone 'bag_procesor.py' (con una sola 's'), asegúrate de escribirlo igual
+# from .bag_tools.bag_processor import BagProcessor 
 
 from .utils import tools
 

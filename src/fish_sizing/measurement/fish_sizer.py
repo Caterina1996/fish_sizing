@@ -27,9 +27,14 @@ class FishSizer():
          
         if args is not None:
             self.__dict__.update(vars(args))
+        
+        # --- NUEVO: Definir y crear la carpeta específica del frame ---
+        self.frame_dir = os.path.join(self.out_path, f"{self.frame_scene.frame_name}")
+        os.makedirs(self.frame_dir, exist_ok=True)
+        
+        self.scene_ply_name = os.path.join(self.frame_dir, f"{self.frame_scene.frame_name}_scene.ply")
+        self.all_fish_ply_name = os.path.join(self.frame_dir, f"{self.frame_scene.frame_name}_all_fish.ply")
             
-        self.scene_ply_name = os.path.join(self.out_path, f"{self.frame_scene.frame_name}_scene.ply")
-        self.all_fish_ply_name = os.path.join(self.out_path, f"{self.frame_scene.frame_name}_all_fish.ply")
     
     @staticmethod
     def _print_fish_summary(fish):
@@ -58,7 +63,7 @@ class FishSizer():
                 
                 FishSizer._print_fish_summary(fish)
                 
-                fish_ply_path = os.path.join(self.out_path, f"{self.frame_scene.frame_name}_{fish.color_id}.ply")
+                fish_ply_path = os.path.join(self.frame_dir, f"{self.frame_scene.frame_name}_{fish.color_id}.ply")
                 fish_pcd = self.stereo.extract_point_cloud(self.frame_scene.scene_points_3d, self.img_l, mask=fish.mask)
                 
                 if fish_pcd is None:
@@ -102,6 +107,13 @@ class FishSizer():
                         print(f"   📏 Midiendo Filtrado...")
                         current_fish_3d.measure_fish_length_ply_with_angles_and_plot(
                             plot_fish_direction=True, filtered=True)
+                        
+                        # Medimos también usando el spine
+                        spine_len = current_fish_3d.measure_curved_length(filtered=True, num_slices=5)
+                        current_fish_3d.spine_length = spine_len # Guardamos en el objeto
+                        
+                        if spine_len > 0:
+                            print(colored(f"   🐍 Longitud Curva (Spine): {spine_len * 100:.2f} cm", "green"))
                         
                     # Añadir como pez 3D válido
                     self.bagfile_fauna.add_fish(current_fish_3d)

@@ -97,7 +97,7 @@ sigma (float)
 -------------
 - Qué es: Sensibilidad a los bordes de color. Determina cómo el filtro respeta los bordes de la imagen original.
     Defining how sensitive the filtering process is to source image edges. 
-    arge values can lead to disparity leakage through low-contrast edges. 
+    large values can lead to disparity leakage through low-contrast edges. 
     Small values can make the filter too sensitive to noise and textures in the source image
 
 - Typical values range from 0.8 to 2.0. 

@@ -3,9 +3,9 @@ stereo:
   num_disparities: 128  # Multiplo de 16
   block_size: 7         # 3-7 suele ir bien 5?
   p1_factor: 8
-  p2_factor: 32
+  p2_factor: 24
   disp12_max_diff: 2 #PROBAR CON 2
-  uniqueness_ratio: 10
+  uniqueness_ratio: 20
   speckle_window_size: 100
   speckle_range: 2 #  Si usas SGBM, a veces hay que multiplicarlo por 16.
   mode: "MODE_HH"

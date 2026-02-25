@@ -7,8 +7,8 @@ import numpy as np
 from termcolor import cprint
 from natsort import natsorted
 
-from fish_sizing.utils.bag_processor import BagProcessor
-from fish_sizing.utils.image_processor import ImageProcessor
+from fish_sizing.bag_tools.bag_processor import BagProcessor
+from fish_sizing.img_processor.image_processor import ImageProcessor
 from fish_sizing.detection.fish2D import Fish2D, FrameScene  # pot ser aquest import ens el podem estalviar
 from fish_sizing.stereo.stereo import StereoVision
 from fish_sizing.detection.fish_detector import  FishDetector

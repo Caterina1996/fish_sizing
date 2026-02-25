@@ -36,8 +36,9 @@ class Fish3D(Fish2D):
         self.length = -1
         self.filtered_length = -1
         self.base_path = base_path
-        self.pointcloud_dir = os.path.join(base_path, f"frame_{self.fish_frame}")
+        self.pointcloud_dir = os.path.join(base_path, f"{self.fish_frame}")
         self.fish_dist_from_camera = -1
+        self.spine_length = -1
         
         self.colors= colors
         
@@ -47,6 +48,65 @@ class Fish3D(Fish2D):
         #Encontrar la distancia del pez a la camara
         z_vals = self.pointcloud_filtered[:, 2]
         self.fish_dist_from_camera = np.mean(z_vals)
+        
+        
+    def measure_curved_length(self, filtered=True, num_slices=15):
+        """
+        Mide la longitud del pez siguiendo su curvatura (arco).
+        Soluciona los puntos fantasma y compensa los extremos del morro y la cola.
+        """
+        points = self.pointcloud_filtered if filtered else self.pointcloud_raw
+        
+        if points is None or len(points) < num_slices * 2:
+            return 0.0
+
+        # 1. Alinear nube de puntos con el eje X usando PCA
+        pca = PCA(n_components=3)
+        pca.fit(points)
+        points_rotated = pca.transform(points)
+        
+        # 2. Límites robustos (Ignorando ruido en los extremos: percentil 1 y 99)
+        x_coords = points_rotated[:, 0]
+        robust_min_x = np.percentile(x_coords, 1)
+        robust_max_x = np.percentile(x_coords, 99)
+        
+        mask_solid = (x_coords >= robust_min_x) & (x_coords <= robust_max_x)
+        solid_points = points_rotated[mask_solid]
+        
+        if len(solid_points) == 0:
+            return 0.0
+
+        # 3. Crear rebanadas (Slicing) y calcular centroides
+        step_size = (robust_max_x - robust_min_x) / num_slices
+        centroids = []
+        
+        for i in range(num_slices):
+            x_start = robust_min_x + (i * step_size)
+            x_end = x_start + step_size
+            
+            slice_mask = (solid_points[:, 0] >= x_start) & (solid_points[:, 0] < x_end)
+            slice_pts = solid_points[slice_mask]
+            
+            if len(slice_pts) >= 3:
+                centroids.append(np.mean(slice_pts, axis=0))
+        
+        centroids = np.array(centroids)
+        
+        if len(centroids) < 2:
+            return 0.0
+            
+        # 4. Longitud de la espina dorsal
+        diffs = np.diff(centroids, axis=0) 
+        spine_length = np.sum(np.linalg.norm(diffs, axis=1))
+        
+        # 5. Compensación de puntas (Tip Compensation)
+        tip_nose = solid_points[np.argmin(solid_points[:, 0])]
+        tip_tail = solid_points[np.argmax(solid_points[:, 0])]
+        
+        dist_to_nose = np.linalg.norm(tip_nose - centroids[0])
+        dist_to_tail = np.linalg.norm(tip_tail - centroids[-1])
+        
+        return spine_length + dist_to_nose + dist_to_tail
         
     
     def measure_fish_length_ply_with_angles_and_plot(self, 
@@ -79,7 +139,26 @@ class Fish3D(Fish2D):
         
         # Project points over the eigenvector to get length
         projections = np.dot(points, fish_direction)
-        fish_length = np.max(projections) - np.min(projections)
+        # fish_length = np.max(projections) - np.min(projections)
+        
+        
+        # TODO: Weird things were happening... Revisar?? No sé si ara em quedaran sempre curts...
+        p_min = np.percentile(projections, 0.1)  
+        p_max = np.percentile(projections, 99.9)         
+        fish_length = p_max - p_min
+        
+        
+        # OPCIO 2_
+        # Hacemos la media de los 15 puntos más extremos de la cola y el morro
+        # Esto "suaviza" cualquier pico falso sin recortar el pez
+        # sorted_proj = np.sort(projections)
+        # num_points_to_avg = min(15, len(sorted_proj) // 10) # Seguro por si la nube es enana
+        
+        # p_min = np.mean(sorted_proj[:num_points_to_avg])
+        # p_max = np.mean(sorted_proj[-num_points_to_avg:])
+        
+        # fish_length = p_max - p_min
+        
 
         # --- ANGLE CALCULATION ---
         # Normalizar vector
@@ -99,7 +178,7 @@ class Fish3D(Fish2D):
             # --- VISUALIZE ---
             if plot_fish_direction and fish_length>0:
                 # tools.plot_fish_with_dual_cameras(points, fish_direction, fish_length, color_id,self.base_path)
-                tools.plot_fish_with_dual_cameras_plotly(points, fish_direction, fish_length, self.color_id, self.base_path)
+                tools.plot_fish_with_dual_cameras_plotly(points, fish_direction, fish_length, self.color_id, self.pointcloud_dir)
 
             self.filtered_fish_direction = fish_direction
             self.filtered_length = fish_length

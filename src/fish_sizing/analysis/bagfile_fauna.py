@@ -27,7 +27,7 @@ class Bagfile_fauna():
         'frame_id', 'class_name', 'object_id', 'track_id', 
         'is_3D_complete', 'in_image_borders','does_overlap',
         'overlapping_fish_ids', 'fish_direction', 'elevation_deg', 'azimuth_deg', 
-        'raw_length', 'filtered_length', 'gt', 'abs_error_m', 'rel_error_%', 'fish_dist_from_camera'
+        'raw_length', 'filtered_length', 'spine_length', 'gt', 'abs_error_m', 'rel_error_%', 'fish_dist_from_camera'
         ]
                     
         self.all_fish_df = pd.DataFrame(columns=self.columns_order)
@@ -49,6 +49,7 @@ class Bagfile_fauna():
             'azimuth_deg': fish.azimuth_deg,
             'raw_length': fish.length,
             'filtered_length': fish.filtered_length,
+            'spine_length': fish.spine_length,
             'gt': self.gt,
             'abs_error_m': None, # Se calcula al final
             'rel_error_%': None, # Se calcula al final
@@ -73,6 +74,7 @@ class Bagfile_fauna():
             'azimuth_deg': None,
             'raw_length': None,
             'filtered_length': None,
+            'spine_length': None,
             'gt': self.gt,
             'abs_error_m': None,
             'rel_error_%': None,
@@ -213,6 +215,11 @@ class Bagfile_fauna():
                 gt_m = self.gt / 100.0
                 abs_err = abs(valid_max - gt_m) * 100 # el vull en cm
                 rel_err = (abs_err / gt_m) * 100
+                
+            # Extraer spine length (quitando NaNs por si alguno falló)
+            sorted_spine = track_data['spine_length'].dropna().sort_values(ascending=False).tolist()
+            median_spine = np.median(sorted_spine) if sorted_spine else None
+            max_spine = sorted_spine[0] if sorted_spine else None
 
             stats = {
                 'track_id': track_id,
@@ -221,9 +228,11 @@ class Bagfile_fauna():
                 'max_length_smart': valid_max,
                 'mean_top_20_length': mean_top_20,
                 'median_length': median_val,
+                'max_spine_length': max_spine,       
+                'median_spine_length': median_spine, 
                 'gt': self.gt, 
-                'abs_error_m': abs_err,       # Nuevo
-                'rel_error_%': rel_err,       # Nuevo
+                'abs_error_m': abs_err,       
+                'rel_error_%': rel_err,       
                 'dist_camera_mean': track_data['fish_dist_from_camera'].mean()
             }
             resume_list.append(stats)
