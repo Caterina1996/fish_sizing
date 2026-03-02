@@ -1,57 +1,77 @@
+#!/usr/bin/env python3
 import os
 import pandas as pd
+from pathlib import Path
+import argparse
 
-# -------- CONFIG --------
-root_dir = r"/home/slimbook/fish_sizing/out/LIMIA/1peix"
-output_file = os.path.join(root_dir, "resume_filtered_smart_angle_ok_aggregated.csv")
-# ------------------------
+def aggregate_csvs(base_dir, output_file, target_csv_name):
+    base_path = Path(base_dir).resolve()
+    all_dfs = []
 
-all_dfs = []
-files_found = 0
+    print(f"🔍 Buscando archivos '{target_csv_name}' en:\n   {base_path}\n")
 
-for dirpath, dirnames, filenames in os.walk(root_dir):
-    target_file = os.path.join(dirpath, "results", "resume_filtered_smart_angle_ok.csv")
-    
-    if os.path.exists(target_file):
+    # rglob busca recursivamente en todas las subcarpetas
+    for filepath in base_path.rglob(target_csv_name):
         try:
-            df = pd.read_csv(target_file)
+            # Leer el CSV
+            df = pd.read_csv(filepath)
             
-            # Nombre de la carpeta padre (la que contiene "results")
-            parent_folder = os.path.basename(dirpath)
-            df["parent_folder"] = parent_folder
+            # Si el CSV está vacío (solo cabeceras), lo saltamos
+            if df.empty:
+                continue
+
+            folder_path = filepath.parent
+            
+            # Si el archivo está dentro de una carpeta llamada 'results', subimos un nivel más
+            if folder_path.name == "results":
+                folder_path = folder_path.parent
+            
+            # Calculamos la ruta relativa respecto a la carpeta base
+            try:
+                rel_path = folder_path.relative_to(base_path)
+            except ValueError:
+                # Fallback por si hay algún problema de rutas absolutas extrañas
+                rel_path = folder_path.name
+            
+            # --- AÑADIR LA COLUMNA AL PRINCIPIO ---
+            # insert(posición, nombre_columna, valor) -> 0 es la primera columna
+            df.insert(0, 'source_folder', str(rel_path))
             
             all_dfs.append(df)
-            files_found += 1
-            print(f"✔ Encontrado: {target_file}")
-        
+            print(f"✅ Añadido: {rel_path}")
+            
         except Exception as e:
-            print(f"⚠ Error leyendo {target_file}: {e}")
+            print(f"❌ Error leyendo {filepath}: {e}")
 
-if not all_dfs:
-    print("No se encontraron archivos.")
-    exit()
+    # --- UNIR Y GUARDAR ---
+    if all_dfs:
+        # Unir todos los DataFrames apilándolos
+        final_df = pd.concat(all_dfs, ignore_index=True)
+        
+        # Guardar el CSV resultante
+        final_df.to_csv(output_file, index=False)
+        print(f"\n🎉 ¡Éxito! Se han agrupado {len(all_dfs)} archivos CSV.")
+        print(f"💾 Archivo final guardado en: {output_file}")
+    else:
+        print("\n⚠️ No se encontraron archivos válidos (o estaban todos vacíos) para agrupar.")
 
-# Concatenar todos
-aggregated_df = pd.concat(all_dfs, ignore_index=True)
 
-# Guardar CSV agregado
-aggregated_df.to_csv(output_file, index=False)
-print(f"\nArchivo agregado guardado en:\n{output_file}")
-print(f"Total de archivos combinados: {files_found}")
-print(f"Total de filas: {len(aggregated_df)}")
-
-# -------- Estadísticas de error --------
-print("\n===== ERRORES MEDIOS GLOBALES =====")
-
-if "abs_error_m" in aggregated_df.columns:
-    mean_abs_error = aggregated_df["abs_error_m"].mean()
-    print(f"Mean abs_error_m: {mean_abs_error:.4f} m")
-
-if "rel_error_%" in aggregated_df.columns:
-    mean_rel_error = aggregated_df["rel_error_%"].mean()
-    print(f"Mean rel_error_%: {mean_rel_error:.2f} %")
-
-# También por carpeta (opcional pero útil)
-print("\n===== ERRORES MEDIOS POR CARPETA =====")
-grouped = aggregated_df.groupby("parent_folder")[["abs_error_m", "rel_error_%"]].mean()
-print(grouped)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Agrupa múltiples CSVs de resultados en uno solo.")
+    
+    # Por defecto usará tu ruta, pero puedes cambiarla por consola si quieres
+    parser.add_argument("--base_dir", type=str, 
+                        default="//media/slimbook/easystore/results_fish_sizing/Peixos_piscina/processed/2024_11_12/",
+                        help="Carpeta raíz donde buscar los CSVs")
+    
+    parser.add_argument("--target_csv", type=str, 
+                        default="resume_filtered_smart_angle_ok.csv",
+                        help="Nombre exacto del CSV a buscar")
+    
+    args = parser.parse_args()
+    
+    # El archivo de salida se llamará igual pero con _aggregated al final, y se guardará en la carpeta raíz
+    output_name = args.target_csv.replace(".csv", "_aggregated.csv")
+    output_path = os.path.join(args.base_dir, output_name)
+    
+    aggregate_csvs(args.base_dir, output_path, args.target_csv)

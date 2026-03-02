@@ -8,6 +8,7 @@ import numpy as np
 from pathlib import Path
 from termcolor import cprint
 from natsort import natsorted
+import yaml
 
 from fish_sizing.bag_tools.bag_processor import BagProcessor
 from fish_sizing.img_processing.image_processor import ImageProcessor
@@ -36,26 +37,36 @@ TOPICS_DICT = {
     "info_r": "/stereo_ch3/right/camera_info"
 }
 
-BAGS_DIR="//home/slimbook/bagfiles/LIMA/2025/2025_08_21/selec2/"
+TOPICS_DICT = { 
+    "left":   "/stereo_ch3/left/image_raw/compressed",
+    "right":  "/stereo_ch3/right/image_raw/compressed", 
+    "info_l": "/stereo_ch3/left/camera_info",
+    "info_r": "/stereo_ch3/right/camera_info"
+}
+
+BAGS_DIR="//media/slimbook/easystore/bagfiles/LIMA/2025/Lanty_2/2025_08_21/"
 MODEL_PATH="/home/slimbook/models/binary/yv11m/Pool_v5-revisada_no_duplicats_from_ckpt/40e_finetune_2/weights/last.pt"
-CONF_THR = 0.5
+CONF_THR = 0.4
 gt = None
 Visualize_online = False
 use_wls = True
 
-OUT_PATH = "/media/slimbook/easystore/results_fish_sizing/Peixos_piscina/processed/"
-SELECTED_PIPELINE = "basic"
+OUT_PATH = "/media/slimbook/easystore/results_fish_sizing/seleccio_article/Lanty_2/2025_08_21/"
+SELECTED_PIPELINE = "dehazing"
+image_channels = 1 #si USAM EL COLOR CANVIAR A 3
 
 # --- CONFIGURACIÓN DE PIPELINES ---
 PROCESSING_PIPELINES = {
     "basic": [
         ("match_brightness_linear", {"reference": "left"}, False),
-        ("convert_to_custom_grayscale", {}, True),
-        ("apply_clahe", {"clip_limit": 2.0, "grid_size": (8,8)}, True)      
+        ("convert_to_custom_grayscale", {}, False),
+        ("apply_clahe", {"clip_limit": 2.0, "grid_size": (8,8)}, False)      
     ],
+    
     "dehazing": [
         ("apply_dehaze",            {"omega": 0.85}, True), 
         ("match_brightness_linear", {"reference": "left"}, False),
+        ("convert_to_custom_grayscale", {}, False),
         ("apply_clahe",             {"clip_limit": 2.0}, True),
         ("match_histograms", {"reference": "left"}, True),
     ]
@@ -74,6 +85,46 @@ def transform_path2docker(path: str) -> str:
             return new_path 
             
     return path
+
+def save_run_config(out_dir, args):
+    """Guarda toda la configuración de la ejecución en un archivo YAML para reproducibilidad."""
+    
+    # 1. Leer el archivo de configuración estéreo original
+    stereo_cfg = {}
+    if os.path.exists(args.stereo_config):
+        with open(args.stereo_config, 'r') as f:
+            stereo_cfg = yaml.safe_load(f)
+            
+    # 2. Recopilar la configuración global y variables estáticas
+    globals_cfg = {
+        "MODEL_PATH": args.model_path,
+        "CONF_THR": CONF_THR,
+        "gt_ground_truth": gt,
+        "Visualize_online": Visualize_online,
+        "use_wls": use_wls,
+        "image_channels": image_channels,
+        "selected_pipeline_name": args.selected_pipeline
+    }
+    
+    # 3. Obtener el pipeline de imagen exacto que se va a aplicar
+    img_pipeline_steps = PROCESSING_PIPELINES.get(args.selected_pipeline, [])
+    # Formatearlo para que sea legible en el YAML
+    pipeline_readable = [{"step": step[0], "params": step[1], "enabled": step[2]} for step in img_pipeline_steps]
+
+    # 4. Agrupar todo en un gran diccionario
+    full_config = {
+        "execution_args": vars(args),
+        "global_variables": globals_cfg,
+        "image_processing_pipeline": pipeline_readable,
+        "stereo_configuration": stereo_cfg
+    }
+    
+    # 5. Guardar en disco
+    config_path = os.path.join(out_dir, "run_config.yaml")
+    with open(config_path, 'w') as f:
+        yaml.dump(full_config, f, default_flow_style=False, sort_keys=False)
+        
+    cprint(f"📄 Archivo de configuración guardado en: {config_path}", "green")
 
 def stream_stereo_from_folder(folder_path):
     """Generador que lee pares de imágenes desde una carpeta."""
@@ -135,6 +186,8 @@ def process_single_source(source_path, current_out_path, is_dir, args):
     os.makedirs(current_out_path, exist_ok=True)
     decimation = args.decimation
 
+    save_run_config(current_out_path, args)
+    
     if not is_dir and not os.path.exists(source_path):
         cprint(f"❌ Error: El archivo bag no existe: {source_path}", "red")
         return
@@ -165,7 +218,7 @@ def process_single_source(source_path, current_out_path, is_dir, args):
     img_proc = ImageProcessor(info_l=camera_info['left'], info_r=camera_info['right'])
     fish_detector = FishDetector(args.model_path, conf_thr=CONF_THR)
     bagfile_fauna = Bagfile_fauna(current_out_path, gt)
-    stereo = StereoVision(calibration_data=camera_info, config_path=args.stereo_config, scale=decimation)
+    stereo = StereoVision(calibration_data=camera_info, config_path=args.stereo_config, scale=decimation,image_channels=image_channels)
     
     # 3. Bucle de Procesamiento
     cprint(f"🚀 Iniciando procesamiento y exportación a: {current_out_path}", "cyan")
@@ -184,6 +237,11 @@ def process_single_source(source_path, current_out_path, is_dir, args):
         
         img_proc.downsample(decimation)
         img_l, img_r = img_proc.get_processed()
+        
+        os.makedirs(os.path.join(current_out_path,"original_images"), exist_ok=True)
+        
+        cv2.imwrite(os.path.join(current_out_path,"original_images", fname+"_left.png"), img_l)
+        cv2.imwrite(os.path.join(current_out_path,"original_images", fname+"_right.png"), img_r)
                
         any_fish, frame_scene = fish_detector.process_frame(
             img_proc.processed_left, 

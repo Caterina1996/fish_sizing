@@ -27,7 +27,7 @@ class StereoVision:
         }
     }
 
-    def __init__(self, calibration_data, config_path=None, scale=0.5):
+    def __init__(self, calibration_data, config_path=None, scale=0.5,image_channels=1):
         self.calibration = calibration_data
         
         # 1. Extracción Dinámica de Constantes
@@ -47,7 +47,7 @@ class StereoVision:
             self.CX = raw_cx * scale
             self.CY = raw_cy * scale
             
-            self.image_channels = 1 # TODO repassar
+            self.image_channels = image_channels # TODO repassar
 
             tx_right = P_right[0, 3]
             self.BASELINE = abs(tx_right / raw_fx)
