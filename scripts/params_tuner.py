@@ -35,10 +35,10 @@ def main():
     parser = argparse.ArgumentParser(description="Afinador interactivo de SGBM + WLS + Image Processing")
     
     parser.add_argument("--left",  help="Ruta a la imagen izquierda (rectificada)", 
-    default="/media/slimbook/easystore/results_fish_sizing/seleccio_article/2024_11_12/test_stereo_config/2024_11_12-11_37-frame_38_left.png")
+    default="/media/slimbook/easystore/results_fish_sizing/seleccio_article/2024_11_28/1_peix/test_disp_params/frame_1_left.png")
     
     parser.add_argument("--right", help="Ruta a la imagen derecha (rectificada)",
-    default="/media/slimbook/easystore/results_fish_sizing/seleccio_article/2024_11_12/test_stereo_config/2024_11_12-11_37-frame_38_right.png")
+    default="/media/slimbook/easystore/results_fish_sizing/seleccio_article/2024_11_28/1_peix/test_disp_params/frame_1_right.png")
     
     parser.add_argument("--scale", type=float, default=0.5, help="Escala para que vaya fluido (def: 0.5)")
     args = parser.parse_args()

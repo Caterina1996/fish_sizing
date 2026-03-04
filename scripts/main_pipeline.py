@@ -38,18 +38,18 @@ TOPICS_DICT = {
 
 BAGFILE_PATH=""
 MODEL_PATH="/home/slimbook/models/binary/yv11m/Pool_v5-revisada_no_duplicats_from_ckpt/40e_finetune_2/weights/last.pt"
-IN_DIR ="/media/slimbook/easystore/results_fish_sizing/seleccio_article/1_peix/2024_11_12/10_44_11/0/original_images/"
-CAMERA_INFO_YAML_PATH ="/media/slimbook/easystore/results_fish_sizing/seleccio_article/Lanty_2/2025_08_20"
+IN_DIR ="//media/slimbook/easystore/results_fish_sizing/seleccio_article/lanty1/2025_08_21/1_peix/13_44_55/compressed/original_images/"
+CAMERA_INFO_YAML_PATH ="/media/slimbook/easystore/results_fish_sizing/seleccio_article/lanty1/2025_08_21/1_peix/13_47_59/compressed/"
 
-OUT_PATH = "/media/slimbook/easystore/results_fish_sizing/seleccio_article/1_peix/2024_11_12/10_44_11/0/processing2/"
+OUT_PATH = "/media/slimbook/easystore/results_fish_sizing/seleccio_article/lanty1/2025_08_21/1_peix/13_44_55/compressed/"
 
 CONF_THR = 0.5
-gt =  33.5
+gt =  29.1
 Visualize_online = False
 use_wls = True
-image_channels = 3
+image_channels = 1
 
-SELECTED_PIPELINE = "dehazing"
+SELECTED_PIPELINE = "basic"
 
 # --- CONFIGURACIÓN DE PIPELINES ---
 PROCESSING_PIPELINES = {
@@ -67,8 +67,15 @@ PROCESSING_PIPELINES = {
         ("apply_dehaze",            {"omega": 0.85}, True), 
         ("match_brightness_linear", {"reference": "left"}, False),
         ("apply_clahe",             {"clip_limit": 2.0}, True),
-        ("match_histograms", {"reference": "left"}, True),
+        ("match_histograms", {"reference": "left"}, True)],
+        
+        
+    "clean_edges": [
+        ("apply_bilateral", {"d": 7, "sigma_color": 50, "sigma_space": 50}, False),
+        ("convert_to_custom_grayscale", {}, False),
+        ("apply_clahe", {"clip_limit": 2.5, "grid_size": (8,8)}, False),
     ]
+    
 }
 
 # --- CLASES Y FUNCIONES AUXILIARES ---
@@ -199,10 +206,15 @@ def main():
     parser.add_argument("--model_path", type=str,  help="Path to the detection AI model", default=MODEL_PATH)
     parser.add_argument("--stereo_config", type=str, default="/home/slimbook/fish_sizing/config/stereo_config.yaml", help="Path to the yaml con la config")
     parser.add_argument("--decimation", type=float, default=0.5, help="Escala de reduccion")
-    parser.add_argument("--ignore_borders", action="store_true", default=True, help="Procesa peces aunque toquen bordes")
-    parser.add_argument("--ignore_completeness", action="store_true", default=True, help="Procesa peces incompletos")
+    
+    parser.add_argument("--ignore_borders", action="store_true", default=False, help="Procesa peces aunque toquen bordes")
+    parser.add_argument("--ignore_completeness", action="store_true", default=False, help="Procesa peces incompletos")
     parser.add_argument("--ignore_overlap", action="store_true", default=True, help="Procesa peces solapados")
     parser.add_argument("--overlap_margin", type=float, default=0.05, help="Margen Z en metros para solapamientos")
+    
+    parser.add_argument("--ignore_aspect_ratio", action="store_true", default=True, help="Procesa peces cuadrados")
+    parser.add_argument("--aspect_ratio_thr", type=float, default=2, help="Aspect ratio check thr para descartar peces frontales")
+    
     parser.add_argument("--selected_pipeline", default=SELECTED_PIPELINE, help="Pipeline de procesamiento")
        
     args = parser.parse_args()
@@ -223,6 +235,7 @@ def main():
         decimation = 1.0
         args.decimation = 1.0 
         scale_for_yaml = args.pre_scale # Escalar el YAML para que coincida con la imagen física
+    
     else:
         decimation = args.decimation
         scale_for_yaml = 1.0
@@ -301,8 +314,8 @@ def main():
         # Lógica de pre-procesamiento
         if args.images_source_dir and args.is_preprocessed:
             # Las imágenes ya están rectificadas y decimadas. Nos saltamos ese paso.
-            img_proc.processed_l = img_l_raw
-            img_proc.processed_r = img_r_raw
+            img_proc.processed_left = img_l_raw
+            img_proc.processed_right = img_r_raw
         else:
             # Flujo normal para bagfiles o imágenes sin tratar
             img_proc.rectify()

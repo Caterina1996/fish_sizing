@@ -132,6 +132,21 @@ class Fish3D(Fish2D):
         # 2. PCA (Principal Component Analysis)
         pca = PCA(n_components=3)
         pca.fit(points)
+        
+        # --- Check that the pc it's not just a disk to avoid frames where the fish is facing the camera ---
+        # explained_variance_ratio_ nos dice qué % de la forma total se explica por cada eje
+        var_length = pca.explained_variance_ratio_[0] # Componente principal (Longitud)
+        var_height = pca.explained_variance_ratio_[1] # Segundo componente (Altura/Grosor)
+        
+        # Si la longitud no es al menos el doble (o triple) de dominante que la altura/grosor...
+        # significa que la nube de puntos es una especie de esfera
+        pca_confidence_ratio = var_length / var_height
+        
+        if pca_confidence_ratio < 2.5:
+            print(colored(f"⚠️ Pez {self.track_id} descartado: Está de cara o su 3D es muy redondo (PCA Ratio: {pca_confidence_ratio:.2f})", "red"))
+            self.length = -1
+            self.filtered_length = -1
+            return
 
         # El componente principal (eigenvector con mayor varianza) es la dirección del pez
         principal_components = pca.components_

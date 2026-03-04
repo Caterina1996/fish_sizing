@@ -25,7 +25,7 @@ from fish_sizing.measurement.fish_sizer import FishSizer
 # Rellena SOLO la ruta del modo que quieras usar. Deja las demás con ""
 
 # 1. Modos de Entrada (El script ejecutará el primero que tenga texto)
-IMAGES_BATCH_DIR = "//media/slimbook/easystore/results_fish_sizing/seleccio_article/2024_11_28/1_peix/" # Modo Batch Imágenes Extraídas
+IMAGES_BATCH_DIR = "//media/slimbook/easystore/results_fish_sizing/seleccio_article/2024_11_28/1_peix/pending/" # Modo Batch Imágenes Extraídas
 BAGS_DIR         = "" # "/media/slimbook/easystore/bagfiles/LIMA/2025/Lanty_2/2025_08_21/"
 IMAGES_SOURCE_DIR= "" # "/ruta/a/una/sola/carpeta"
 BAGFILE_PATH     = "" # "/ruta/a/un/solo.bag"
@@ -38,7 +38,7 @@ IS_PREPROCESSED       = True  # True si las imágenes ya están decimadas/rectif
 PRE_SCALE             = 0.5   # Factor de escala al que se guardaron las imágenes
 
 # 3. Salida y Modelos (Para modos que no son Batch Imágenes)
-OUT_PATH   = "/media/slimbook/easystore/results_fish_sizing/seleccio_article/2024_11_28/1_peix/"
+OUT_PATH   = "/media/slimbook/easystore/results_fish_sizing/seleccio_article/2024_11_28/1_peix/pending/"
 # MODEL_PATH = "/home/slimbook/models/binary/yv11m/Pool_v5-revisada_no_duplicats_from_ckpt/40e_finetune_2/weights/last.pt"
 MODEL_PATH="/home/slimbook/models/binary/yv11m/Pool_v5-revisada_no_duplicats_from_ckpt/40e_finetune_2/weights/last.pt"
 
@@ -49,6 +49,7 @@ Visualize_online  = False
 use_wls           = True
 image_channels    = 1 # Si USAMOS EL COLOR CAMBIAR A 3
 SELECTED_PIPELINE = "basic"
+overwrite_existing = True
 
 # --- DOCKER MAPPINGS ---
 PATH_MAPPINGS = {
@@ -460,8 +461,12 @@ def main():
         # --- NUEVA COMPROBACIÓN AQUÍ ---
         # Comprueba si la carpeta ya existe y además tiene algún archivo dentro
         if os.path.exists(current_out_path) and os.path.isdir(current_out_path) and len(os.listdir(current_out_path)) > 0:
-            cprint(f"⏭️  SALTANDO: La carpeta de salida ya existe y contiene datos.", "yellow")
-            continue
+            
+            if overwrite_existing==False:
+                cprint(f"⏭️  SALTANDO: La carpeta de salida ya existe y contiene datos.", "yellow")
+                continue
+            else:
+               shutil.rmtree(current_out_path,ignore_errors=True)
         # -------------------------------
         
         try:
