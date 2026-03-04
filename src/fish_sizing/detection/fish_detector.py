@@ -30,7 +30,7 @@ class FishDetector:
         mask_raw = mask.cpu().data.numpy().transpose(1, 2, 0)
         return np.squeeze(mask_raw)
 
-    def process_frame(self, img, frame_id="unknown", disparity_img=None, save_debug=False, debug_path=None, save_obj=True):
+    def process_frame(self, img, frame_id="unknown", disparity_img=None, save_debug=False, debug_path=None, save_obj=False):
         h, w = img.shape[:2]
         
         external_frame = np.ones((h, w), dtype=np.uint8)

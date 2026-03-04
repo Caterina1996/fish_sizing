@@ -269,6 +269,34 @@ class ImageProcessor:
             
         return self
     
+    
+    def apply_gamma(self, gamma=1.2):
+        """Ajusta el brillo no linealmente para revelar detalles en las sombras."""
+        invGamma = 1.0 / gamma
+        table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+        
+        self.processed_left = cv2.LUT(self.processed_left, table)
+        if self.is_stereo:
+            self.processed_right = cv2.LUT(self.processed_right, table)
+        return self
+    
+    def apply_sharpen(self, alpha=1.5):
+        """Aumenta la nitidez para que el estéreo (SGBM) tenga 'micro-texturas' a las que agarrarse."""
+        blurred_l = cv2.GaussianBlur(self.processed_left, (0, 0), 3)
+        self.processed_left = cv2.addWeighted(self.processed_left, alpha, blurred_l, 1 - alpha, 0)
+        
+        if self.is_stereo:
+            blurred_r = cv2.GaussianBlur(self.processed_right, (0, 0), 3)
+            self.processed_right = cv2.addWeighted(self.processed_right, alpha, blurred_r, 1 - alpha, 0)
+        return self
+    
+    def apply_bilateral(self, d=5, sigma_color=50, sigma_space=50):
+        """Suaviza el ruido del agua manteniendo los bordes del pez intactos."""
+        self.processed_left = cv2.bilateralFilter(self.processed_left, d, sigma_color, sigma_space)
+        if self.is_stereo:
+            self.processed_right = cv2.bilateralFilter(self.processed_right, d, sigma_color, sigma_space)
+        return self
+
     @staticmethod
     def _guided_filter(I, p, r, eps):
         """

@@ -30,45 +30,38 @@ PATH_MAPPINGS = {
 
 USE_DOCKER = True
 
-TOPICS_DICT = { 
-    "left":   "/stereo_ch3/left/image_raw",
-    "right":  "/stereo_ch3/right/image_raw", 
-    "info_l": "/stereo_ch3/left/camera_info",
-    "info_r": "/stereo_ch3/right/camera_info"
-}
-
-TOPICS_DICT = { 
-    "left":   "/stereo_ch3/left/image_raw/compressed",
-    "right":  "/stereo_ch3/right/image_raw/compressed", 
-    "info_l": "/stereo_ch3/left/camera_info",
-    "info_r": "/stereo_ch3/right/camera_info"
-}
-
-BAGS_DIR="//media/slimbook/easystore/bagfiles/LIMA/2025/Lanty_2/2025_08_21/"
+BAGS_DIR="//media/slimbook/easystore/bagfiles/seleccio_article/2025_08_21/lanty_1/multiple_fish/"
 MODEL_PATH="/home/slimbook/models/binary/yv11m/Pool_v5-revisada_no_duplicats_from_ckpt/40e_finetune_2/weights/last.pt"
-CONF_THR = 0.4
-gt = None
+
+CONF_THR = 0.5
+gt = ""
 Visualize_online = False
 use_wls = True
 
-OUT_PATH = "/media/slimbook/easystore/results_fish_sizing/seleccio_article/Lanty_2/2025_08_21/"
-SELECTED_PIPELINE = "dehazing"
+OUT_PATH = "//media/slimbook/easystore/results_fish_sizing/seleccio_article/lanty1/2025_08_21/multiple_fish/"
+SELECTED_PIPELINE = "basic"
 image_channels = 1 #si USAM EL COLOR CANVIAR A 3
 
 # --- CONFIGURACIÓN DE PIPELINES ---
 PROCESSING_PIPELINES = {
+    "raw": [],
+    
     "basic": [
         ("match_brightness_linear", {"reference": "left"}, False),
         ("convert_to_custom_grayscale", {}, False),
-        ("apply_clahe", {"clip_limit": 2.0, "grid_size": (8,8)}, False)      
+        ("apply_clahe", {"clip_limit": 2.0, "grid_size": (8,8)}, False)
     ],
     
-    "dehazing": [
-        ("apply_dehaze",            {"omega": 0.85}, True), 
-        ("match_brightness_linear", {"reference": "left"}, False),
+    "sharp": [
+        ("apply_gamma", {"gamma": 1.2}, False),
+        ("apply_sharpen", {"alpha": 1.7}, False),
+        ("convert_to_custom_grayscale", {}, False)
+    ],
+    
+    "clean_edges": [
+        ("apply_bilateral", {"d": 7, "sigma_color": 50, "sigma_space": 50}, False),
         ("convert_to_custom_grayscale", {}, False),
-        ("apply_clahe",             {"clip_limit": 2.0}, True),
-        ("match_histograms", {"reference": "left"}, True),
+        ("apply_clahe", {"clip_limit": 1.5, "grid_size": (8,8)}, False)
     ]
 }
 
@@ -195,15 +188,29 @@ def process_single_source(source_path, current_out_path, is_dir, args):
     # 1. Inicializar BagProcessor o Streamer
     if not is_dir:
         cprint(f"📂 Leyendo bag: {source_path}", "cyan")
-        bag_proc = BagProcessor(source_path, TOPICS_DICT)
+        
+        # --- NUEVO: Selección dinámica de Topics ---
+        topics_dict = {
+            "info_l": "/stereo_ch3/left/camera_info",
+            "info_r": "/stereo_ch3/right/camera_info"
+        }
+        
+        # Comprobar si 'compressed' está en el nombre del archivo
+        if "compressed" in os.path.basename(source_path).lower():
+            cprint("🗜️ Modo comprimido detectado: Usando topics /compressed", "yellow")
+            topics_dict["left"] = "/stereo_ch3/left/image_raw/compressed"
+            topics_dict["right"] = "/stereo_ch3/right/image_raw/compressed"
+        else:
+            cprint("📷 Modo normal detectado: Usando topics raw", "yellow")
+            topics_dict["left"] = "/stereo_ch3/left/image_raw"
+            topics_dict["right"] = "/stereo_ch3/right/image_raw"
+            
+        bag_proc = BagProcessor(source_path, topics_dict)
         cprint("🔍 Buscando mensajes de calibración...", "yellow")
         camera_info = bag_proc.get_calibration()
         image_iterator = bag_proc.stream_stereo_pairs()
     else:
         cprint(f"📂 Modo Carpeta: Leyendo desde {source_path}", "cyan")
-        # Asumimos que si es carpeta, no tenemos calibración de bag (la sacamos del config si hiciera falta)
-        # Ojo: Si usas carpeta, el script antiguo fallaba porque camera_info no estaba definido.
-        # Aquí permitiremos fallar limpiamente si no hay bag.
         cprint("❌ El modo carpeta requiere adaptar la calibración manualmente.", "red")
         return
 
@@ -255,12 +262,9 @@ def process_single_source(source_path, current_out_path, is_dir, args):
         if any_fish:
             processed_l, processed_r = img_proc.get_processed()
             
-            # cv2.imwrite(os.path.join(current_out_path, fname+"_original_left.png"), processed_l)
-            # cv2.imwrite(os.path.join(current_out_path, fname+"_original_right.png"), processed_r)
-            
             processed_l, processed_r = img_proc.run_pipeline(
                 PROCESSING_PIPELINES[args.selected_pipeline], 
-                base_debug_folder = current_out_path,
+                # base_debug_folder = current_out_path,
                 frame_id = fname,
                 visualize = Visualize_online
             )
