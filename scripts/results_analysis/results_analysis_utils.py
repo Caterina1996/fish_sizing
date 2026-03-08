@@ -56,6 +56,7 @@ def create_df_from_root_folders(root_dir, output_csv_path, results_dir="correcte
 
     if gt is not None:
         df_raw["gt"] = gt
+        df_raw["abs_error_cm"] = abs(df_raw["filtered_length"]*100-df_raw["gt"])
 
     cols = ["video_day"] + ["source_folder"] + [c for c in df_raw.columns if c != "source_folder" and c != "video_day"]
     df_raw = df_raw[cols]
@@ -292,14 +293,12 @@ def plot_aspect_ratio_vs_length(df_raw, ASPECT_RATIO_THR=3.0, figsize=(10, 8)):
     plt.show()
     
     
-def smart_aggregator(track_df,num_tracks_threshold=5,deviation_from_median=1.5):
-    """Smart filtering to all tracks"""
+def smart_aggregator(track_df, length_col='filtered_length',num_tracks_threshold=5,deviation_from_median=1.5):
     num_frames = len(track_df)
-    
     # if There's not a min number of tracks do not consider this measurement
     if num_frames < num_tracks_threshold: return None
     
-    sorted_lengths = track_df['filtered_length'].dropna().sort_values(ascending=False).tolist()
+    sorted_lengths = track_df[length_col].dropna().sort_values(ascending=False).tolist()
     if not sorted_lengths: return None
     
     valid_max = sorted_lengths[0]
@@ -311,7 +310,8 @@ def smart_aggregator(track_df,num_tracks_threshold=5,deviation_from_median=1.5):
             # If maximum is further than c_med * deviation_from_median of the median consider it an outlier
             if c_max > c_med * deviation_from_median:
                 sorted_lengths.pop(0); continue
-            # if maximum is more thabn a 5% further than the next measure discard it
+                
+            # if maximum is more thabn a 5% further than the next measure discard it    
             if (c_max - n_max) / n_max < 0.05:
                 valid_max = c_max; break
             else:
@@ -319,22 +319,24 @@ def smart_aggregator(track_df,num_tracks_threshold=5,deviation_from_median=1.5):
         if len(sorted_lengths) <= 2: valid_max = sorted_lengths[0]
             
     if num_frames < 20: 
-        rep_len = valid_max
+        rep_len_m = valid_max
     else:
         n_top = max(1, int(len(sorted_lengths) * 0.2))
-        rep_len = sum(sorted_lengths[:n_top]) / n_top
+        rep_len_m = sum(sorted_lengths[:n_top]) / n_top
         
-    gt_val = track_df['gt'].iloc[0]
-    rel_err = abs((rep_len - (gt_val/100.0)) * 100) / gt_val * 100 if gt_val > 0 else None
+    gt_cm = track_df['gt'].iloc[0]
+    calculated_length_cm = rep_len_m * 100.0
+    abs_err_cm = abs(calculated_length_cm - gt_cm) if gt_cm > 0 else None
     
     return pd.Series({
         'n_frames_validos': num_frames,
-        'length_used_for_error': rep_len,
-        'mean_elevation_deg': track_df['elevation_deg'].mean(),
-        'mean_aspect_ratio': track_df['aspect_ratio'].mean(),
-        'gt': gt_val,
-        'rel_error_%': rel_err
+        'calculated_length_cm': calculated_length_cm,
+        'gt_cm': gt_cm,
+        'abs_error_cm': abs_err_cm,
+        'mean_elevation_deg': track_df['elevation_deg'].mean()
     })
+
+
 
 def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
     """
@@ -371,12 +373,12 @@ def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
 
     # Aplicar smart_aggregator por track en cada etapa
     stages_dict = {
-        "0. Base (HDBSCAN sin filtros)": df_base.groupby(['source_folder','track_id']).apply(rutils.smart_aggregator).dropna().reset_index(),
-        "1. + Filtro: is_3D_complete": df_base[mask_1].groupby(['source_folder','track_id']).apply(rutils.smart_aggregator).dropna().reset_index(),
-        "2. + Filtro: Sin Bordes": df_base[mask_2].groupby(['source_folder','track_id']).apply(rutils.smart_aggregator).dropna().reset_index(),
-        "3. + Filtro: Sin Solapamiento": df_base[mask_3].groupby(['source_folder','track_id']).apply(rutils.smart_aggregator).dropna().reset_index(),
-        f"4. + Filtro: Aspect Ratio >= {ASPECT_RATIO_THR}": df_base[mask_4].groupby(['source_folder','track_id']).apply(rutils.smart_aggregator).dropna().reset_index(),
-        f"5. + Filtro: Ángulo Z <= {ANGLE_THR}º": df_base[mask_5].groupby(['source_folder','track_id']).apply(rutils.smart_aggregator).dropna().reset_index()
+        "0. Base (HDBSCAN sin filtros)": df_base.groupby(['source_folder','track_id']).apply(smart_aggregator).dropna().reset_index(),
+        "1. + Filtro: is_3D_complete": df_base[mask_1].groupby(['source_folder','track_id']).apply(smart_aggregator).dropna().reset_index(),
+        "2. + Filtro: Sin Bordes": df_base[mask_2].groupby(['source_folder','track_id']).apply(smart_aggregator).dropna().reset_index(),
+        "3. + Filtro: Sin Solapamiento": df_base[mask_3].groupby(['source_folder','track_id']).apply(smart_aggregator).dropna().reset_index(),
+        f"4. + Filtro: Aspect Ratio >= {ASPECT_RATIO_THR}": df_base[mask_4].groupby(['source_folder','track_id']).apply(smart_aggregator).dropna().reset_index(),
+        f"5. + Filtro: Ángulo Z <= {ANGLE_THR}º": df_base[mask_5].groupby(['source_folder','track_id']).apply(smart_aggregator).dropna().reset_index()
     }
 
     # Contar frames activos en cada paso
@@ -442,4 +444,164 @@ def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
     plt.tight_layout()
     plt.show()
     
-    return stages_dict
+    return stages_dict, df_base[mask_5].groupby(['source_folder','track_id']).apply(smart_aggregator).dropna().reset_index()
+
+def plot_smart_filter_explanation_pro(df, folder_code, track_id, length_col='filtered_length', ar_thr=1.8, angle_thr=20.0):
+    """
+    Desgrana y visualiza el funcionamiento interno del 'Smart Aggregator' 
+    con alineación temporal del Aspect Ratio y el Ángulo Z.
+    """
+    # 1. AISLAR DATOS Y LIMPIAR -1
+    folder_str = str(folder_code)
+    track_str = str(track_id)
+    mask = (df['source_folder'].astype(str) == folder_str) & (df['track_id'].astype(str) == track_str)
+    track_df = df[mask].copy()
+    
+    if track_df.empty:
+        print(f"❌ ERROR: No se encontraron datos para la carpeta '{folder_str}' y track '{track_str}'")
+        return
+        
+    track_df['frame_num'] = track_df['frame_id'].astype(str).str.extract(r'(\d+)').astype(float).astype(int)
+    
+    # --- LA MAGIA CONTRA EL -1 ---
+    track_df[length_col] = track_df[length_col].replace(-1, np.nan)
+    valid_df = track_df.dropna(subset=[length_col]).sort_values(by='frame_num').copy()
+    
+    num_frames = len(valid_df)
+    if num_frames < 3:
+        print("⚠️ El track tiene menos de 3 frames con medidas válidas. El Smart Aggregator lo descartaría.")
+        return
+
+    # 2. REPLICAR LA LÓGICA DEL ALGORITMO
+    sorted_df = valid_df.sort_values(by=length_col, ascending=False).copy()
+    sorted_df['status'] = 'Válido (Ignorado)' 
+    
+    lengths = sorted_df[length_col].tolist()
+    indices = sorted_df.index.tolist() 
+    
+    outliers_doble = []
+    outliers_salto = []
+    
+    if len(lengths) >= 5:
+        while len(lengths) > 2:
+            c_max, n_max = lengths[0], lengths[1]
+            c_med = np.median(lengths)
+            
+            if c_max > c_med * 2.0:
+                outliers_doble.append(indices.pop(0))
+                lengths.pop(0)
+                continue
+                
+            if (c_max - n_max) / n_max >= 0.05:
+                outliers_salto.append(indices.pop(0))
+                lengths.pop(0)
+            else:
+                break 
+                
+    sorted_df.loc[outliers_doble, 'status'] = 'Descartado (Pico Gigante > 2x Mediana)'
+    sorted_df.loc[outliers_salto, 'status'] = 'Descartado (Salto > 5%)'
+    
+    used_indices = []
+    if num_frames < 20:
+        if indices: used_indices = [indices[0]]
+    else:
+        n_top = max(1, int(len(lengths) * 0.2))
+        used_indices = indices[:n_top]
+        
+    sorted_df.loc[used_indices, 'status'] = 'Seleccionado (Top 20% Promediado)'
+    
+    final_length = sorted_df.loc[used_indices, length_col].mean()
+    gt_cm = valid_df['gt'].iloc[0]
+    gt_m = gt_cm / 100.0 if gt_cm > 0 else None
+
+    valid_df = valid_df.merge(sorted_df[['status']], left_index=True, right_index=True)
+
+    # 3. PLOTEAR: LAYOUT ASIMÉTRICO CON GRIDSPEC
+    sns.set_theme(style="whitegrid", context="paper", font_scale=1.1)
+    
+    fig = plt.figure(figsize=(18, 10))
+    fig.suptitle(f"Disección del Filtro Smart Aggregator - [Track ID: {track_str}]", fontsize=16, fontweight='bold', y=0.98)
+    
+    # Creamos el Grid: 3 filas, 2 columnas. Columna izq más ancha.
+    gs = fig.add_gridspec(3, 2, width_ratios=[1.3, 1], height_ratios=[2, 1, 1], hspace=0.1)
+    
+    color_dict = {
+        'Descartado (Pico Gigante > 2x Mediana)': '#d62728', 
+        'Descartado (Salto > 5%)': '#ff7f0e',                
+        'Seleccionado (Top 20% Promediado)': '#2ca02c',      
+        'Válido (Ignorado)': '#7f7f7f'                       
+    }
+    markers_dict = {
+        'Descartado (Pico Gigante > 2x Mediana)': 'X',
+        'Descartado (Salto > 5%)': 'X',
+        'Seleccionado (Top 20% Promediado)': '*',
+        'Válido (Ignorado)': 'o'
+    }
+
+    # ==========================================
+    # COLUMNA IZQUIERDA: VISTAS TEMPORALES
+    # ==========================================
+    
+    # PANEL A: Longitud vs Tiempo
+    ax1 = fig.add_subplot(gs[0, 0])
+    sns.scatterplot(data=valid_df, x='frame_num', y=length_col, hue='status', style='status', 
+                    palette=color_dict, markers=markers_dict, s=150, ax=ax1, legend=False)
+    
+    ax1.axhline(y=final_length, color='#2ca02c', linestyle='-', linewidth=2.5, label=f'Medida Final ({final_length:.3f} m)')
+    if gt_m is not None:
+        ax1.axhline(y=gt_m, color='blue', linestyle='--', linewidth=2, label=f'GT ({gt_m:.3f} m)')
+        
+    ax1.set_title("1. Vista Temporal (Evolución de medidas, AR y Ángulo)", fontsize=13, fontweight='bold')
+    ax1.set_ylabel("Longitud (m)", fontweight='bold')
+    ax1.tick_params(labelbottom=False) # Ocultar números X
+    ax1.legend(loc='lower right', fontsize=10)
+
+    # PANEL B: Aspect Ratio vs Tiempo
+    ax_ar = fig.add_subplot(gs[1, 0], sharex=ax1)
+    ax_ar.plot(valid_df['frame_num'], valid_df['aspect_ratio'], marker='^', color='purple', linewidth=1.5)
+    ax_ar.axhline(y=ar_thr, color='black', linestyle=':', linewidth=2, label=f'Umbral AR ({ar_thr})')
+    ax_ar.set_ylabel("Aspect Ratio", fontweight='bold')
+    ax_ar.tick_params(labelbottom=False) # Ocultar números X
+    ax_ar.legend(loc='upper right', fontsize=9)
+
+    # PANEL C: Ángulo Z vs Tiempo
+    ax_ang = fig.add_subplot(gs[2, 0], sharex=ax1)
+    ax_ang.plot(valid_df['frame_num'], valid_df['elevation_deg'], marker='v', color='brown', linewidth=1.5)
+    ax_ang.axhline(y=angle_thr, color='black', linestyle=':', linewidth=2, label=f'Umbral Ángulo (±{angle_thr}º)')
+    ax_ang.axhline(y=-angle_thr, color='black', linestyle=':', linewidth=2)
+    ax_ang.set_ylabel("Ángulo Z (º)", fontweight='bold')
+    ax_ang.set_xlabel("Número de Frame", fontweight='bold')
+    ax_ang.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax_ang.legend(loc='upper right', fontsize=9)
+
+
+    # ==========================================
+    # COLUMNA DERECHA: VISTA ALGORÍTMICA (Ocupa las 3 filas)
+    # ==========================================
+    ax2 = fig.add_subplot(gs[:, 1]) # El ':' significa "ocupa todas las filas"
+    sorted_df['rank'] = np.arange(1, len(sorted_df) + 1)
+    
+    sns.scatterplot(data=sorted_df, x='rank', y=length_col, hue='status', style='status', 
+                    palette=color_dict, markers=markers_dict, s=150, ax=ax2)
+    
+    ax2.plot(sorted_df['rank'], sorted_df[length_col], color='gray', alpha=0.3, zorder=0)
+    ax2.axhline(y=final_length, color='#2ca02c', linestyle='-', linewidth=2.5)
+    
+    if gt_m is not None:
+        ax2.axhline(y=gt_m, color='blue', linestyle='--', linewidth=2)
+        
+    ax2.set_title("2. Vista Algorítmica (Filtro por Orden Descendente)", fontsize=13, fontweight='bold')
+    ax2.set_xlabel("Ranking de Medida (1 = La más grande)", fontweight='bold')
+    ax2.set_ylabel("") # Quitamos el label Y para que no moleste
+    
+    # Ponemos la leyenda de los estados aquí, donde hay más espacio
+    ax2.legend(loc='upper right', fontsize=10, title="Estado del Frame en el Algoritmo")
+    
+    # Sincronizamos los límites del eje Y del panel algorítmico con el panel de longitud
+    ax2.set_ylim(ax1.get_ylim())
+    
+    plt.tight_layout()
+    plt.show()
+
+# EJEMPLO DE USO: 
+# plot_smart_filter_explanation_pro(df_raw, "12_07_31_0", 1)
