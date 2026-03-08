@@ -7,6 +7,7 @@ import glob
 import pickle
 import numpy as np
 import open3d as o3d
+import cv2  # <--- AÑADIDO: Importante para leer el PNG
 from termcolor import cprint, colored
 from natsort import natsorted
 
@@ -38,15 +39,12 @@ def transform_path2docker(path: str) -> str:
 def check_3d_offline(fish, frame_scene, focal, baseline, args):
     """
     Versión offline del check_3d. 
-    Usa el disparity cacheado (.npy) para comprobar oclusiones sin instanciar StereoVision.
     """
-    # A) Aspect Ratio (Perfil vs De Cara)
     x1, y1, x2, y2 = fish.bbox
     width = abs(x2 - x1)
     height = abs(y2 - y1)
     aspect_ratio = max(width, height) / min(width, height) if min(width, height) > 0 else 0
     
-    # B) Solapamiento y Profundidad
     is_front_fish = True 
     if fish.does_overlap and frame_scene.disparity_map is not None:
         my_disp_values = frame_scene.disparity_map[fish.mask > 0]
@@ -66,11 +64,9 @@ def check_3d_offline(fish, frame_scene, focal, baseline, args):
                         is_front_fish = False
                         break 
 
-    # Guardar estado en el objeto
     fish.aspect_ratio = aspect_ratio
     fish.is_front_fish = is_front_fish 
 
-    # Evaluar reglas del usuario
     cond_aspect_ratio  = (aspect_ratio >= args.aspect_ratio_thr) or args.ignore_aspect_ratio
     cond_completeness  = fish.is_3d_complete or args.ignore_completeness
     cond_borders       = not fish.in_image_borders or args.ignore_borders
@@ -96,7 +92,8 @@ def check_3d_offline(fish, frame_scene, focal, baseline, args):
 
 def main():
     parser = argparse.ArgumentParser(description="Reprocesa medidas 3D desde caché (.pkl y .ply) sin recalcular estéreo.")
-    parser.add_argument("--in_dir", "-in", type=str, default="/media/slimbook/easystore/results_fish_sizing/seleccio_article/lanty1/2025_08_21/1_peix/13_44_55/compressed", help="Carpeta de resultados anterior (ej: /results/ejemplo/)")
+    parser.add_argument("--in_dir", "-in", type=str, required=True, help="Carpeta de resultados anterior")
+    parser.add_argument("--out_dir", type=str, default=None, help="Carpeta destino. Si no se pone, se usa in_dir/to_paper")
     parser.add_argument("--gt", type=float, default=28.9, help="Ground Truth en cm para esta carpeta")
     
     # Flags de filtrado
@@ -110,13 +107,18 @@ def main():
     args = parser.parse_args()
     args.in_dir = transform_path2docker(args.in_dir)
     
+    if args.out_dir is None:
+        args.out_dir = os.path.join(args.in_dir, "to_paper")
+    else:
+        args.out_dir = transform_path2docker(args.out_dir)
+    
     if not os.path.exists(args.in_dir):
         cprint(f"❌ Error: La carpeta {args.in_dir} no existe.", "red")
         sys.exit(1)
 
-    # 1. AUTO-CALIBRACIÓN LIGERA (Para el overlap check)
-    focal = 1460.0 # Valores por defecto de backup
-    baseline = 0.12
+    # 1. AUTO-CALIBRACIÓN LIGERA
+    # focal = 1460.0 
+    # baseline = 0.12
     
     right_yaml = os.path.join(args.in_dir, "right.yaml")
     if os.path.exists(right_yaml):
@@ -128,10 +130,9 @@ def main():
                 baseline = abs(P[3] / P[0]) if P[0] != 0 else 0.12
                 cprint(f"📐 Calibración cargada: F={focal:.1f}, B={baseline:.3f}", "green")
 
-    # 2. INICIALIZAR GESTOR DE RESULTADOS
-    bagfile_fauna = Bagfile_fauna(args.in_dir, gt=args.gt)
+    bagfile_fauna = Bagfile_fauna(args.out_dir, gt=args.gt)
     
-    # 3. BUSCAR TODOS LOS FRAMES CACHEADOS (.pkl)
+    # 3. BUSCAR TODOS LOS FRAMES CACHEADOS (.pkl) EN IN_DIR
     pkl_files = natsorted(glob.glob(os.path.join(args.in_dir, "*.pkl")))
     
     if not pkl_files:
@@ -139,41 +140,48 @@ def main():
         sys.exit(0)
 
     cprint(f"🚀 Iniciando Reprocesamiento en Caché ({len(pkl_files)} frames detectados)", "cyan")
+    cprint(f"📁 Guardando nuevos resultados en: {args.out_dir}/results", "cyan")
 
     # 4. BUCLE PRINCIPAL
     for pkl_path in pkl_files:
         
-        # A) Cargar la escena 2D de YOLO
         with open(pkl_path, 'rb') as f:
             frame_scene = pickle.load(f)
             
         frame_name = str(frame_scene.frame_name)
-        frame_dir = os.path.join(args.in_dir, frame_name)
+        frame_dir = os.path.join(args.in_dir, frame_name) 
         
         if not os.path.exists(frame_dir):
             continue
 
-        # B) Intentar cargar la disparidad si existe (Para comprobar solapes)
-        disp_path = os.path.join(frame_dir, f"{frame_name}_disparity.npy")
-        if os.path.exists(disp_path):
-            frame_scene.disparity_map = np.load(disp_path)
+        disp_npy_path = os.path.join(frame_dir, f"{frame_name}_disparity.npy")
+        disp_png_path = os.path.join(frame_dir, f"{frame_name}_disparity.png")
+        
+        if os.path.exists(disp_npy_path):
+            frame_scene.disparity_map = np.load(disp_npy_path)
+        elif os.path.exists(disp_png_path):
+            # Leemos en blanco y negro y convertimos colores a matriz 3D válida
+            disp_img = cv2.imread(disp_png_path, cv2.IMREAD_GRAYSCALE)
+            frame_scene.disparity_map = np.where(disp_img > 5, 1000.0, 0.0).astype(np.float32)
         else:
             frame_scene.disparity_map = None
+        # ------------------------------------------------------------
 
         # C) Iterar peces
         for fish in frame_scene.fish_list:
             if fish.mask is None: 
                 continue
+            
+            if frame_scene.disparity_map is not None:
+                fish.is_complete(frame_scene.disparity_map, debug_path=args.out_dir, debug_mode=False)
 
             fish_ply_path = os.path.join(frame_dir, f"{frame_name}_{fish.color_id}.ply")
             
-            # Si el pez no tenía 3D generado en el pasado, lo saltamos a 2D
             if not os.path.exists(fish_ply_path):
                 cprint(f"⚠️ Nube 3D no encontrada para Fish {fish.track_id} en {frame_name}", "yellow")
                 bagfile_fauna.add_fish_2D(fish)
                 continue
 
-            # Cargar la nube de puntos guardada
             pcd = o3d.io.read_point_cloud(fish_ply_path)
             if pcd.is_empty():
                 bagfile_fauna.add_fish_2D(fish)
@@ -182,15 +190,18 @@ def main():
             points_np = np.asarray(pcd.points)
             colors_bgr_int = (np.asarray(pcd.colors)[:, ::-1] * 255).astype(np.uint8)
 
-            # Instanciar clase de medición
-            current_fish_3d = Fish3D(fish, points_np, args.in_dir, colors_bgr_int)
+            current_fish_3d = Fish3D(fish, points_np, args.out_dir, colors_bgr_int)
 
-            # 1. EVALUAR Y ASIGNAR PROPIEDADES (Offline)
             fish_3d_ok = check_3d_offline(fish, frame_scene, focal, baseline, args)
             
-            current_fish_3d.fish_3d_ok = fish.fish_3d_ok
+            current_fish_3d.fish_3d_ok = fish_3d_ok
             current_fish_3d.aspect_ratio = getattr(fish, 'aspect_ratio', 0.0)
             current_fish_3d.is_front_fish = getattr(fish, 'is_front_fish', True)
+            
+            current_fish_3d.is_3d_complete = getattr(fish, 'is_3d_complete', False)
+            current_fish_3d.in_image_borders = getattr(fish, 'in_image_borders', False)
+            current_fish_3d.does_overlap = getattr(fish, 'does_overlap', False)
+            current_fish_3d.overlapping_ids = getattr(fish, 'overlapping_ids', [])
 
             # 2. CORTAFUEGOS (Early Exit)
             dealbreaker_border = fish.in_image_borders and not args.ignore_borders
@@ -201,13 +212,10 @@ def main():
                 bagfile_fauna.add_fish(current_fish_3d)
                 continue
 
-            # 3. PROCESO DE MEDICIÓN (Sin extraer pointcloud ni recalcular estéreo)
             cprint(f" 🐟 ⚙️ Midiendo Fish {fish.track_id}...", "yellow")
             
             current_fish_3d.filter_outliers_HDBSCAN_adaptive(debug_plot=False)
             current_fish_3d.get_distance_camera_fish()
-
-            # Forzamos medición solo en la filtrada para agilizar
             filt_saved = current_fish_3d.save_fish_pointcloud(filtered=True)
             
             if filt_saved:
@@ -217,10 +225,8 @@ def main():
                 
             bagfile_fauna.add_fish(current_fish_3d)
 
-    # 5. GENERAR CSVs CON LA NUEVA LÓGICA DE TU CLASE BAGFILE_FAUNA
     cprint(f"\n✅ Procesamiento terminado. Generando CSVs...", "green")
     bagfile_fauna.process_and_save_df()
-
 
 if __name__ == "__main__":
     main()

@@ -9,7 +9,7 @@ import cv2
 from termcolor import cprint, colored
 from natsort import natsorted
 import sys
-# IMPORTANTE: Necesario para que pickle pueda reconstruir los objetos correctamente
+
 from fish_sizing.detection.fish2D import Fish2D, FrameScene 
 
 PATH_MAPPINGS = {
@@ -17,7 +17,9 @@ PATH_MAPPINGS = {
     "/home/slimbook/fish_sizing/out": "/home/rosuser/repo/out",
     "/home/slimbook/models": "/home/rosuser/dataset/models/",
     "/home/slimbook/fish_sizing/config" :"/home/rosuser/repo/config/",
-    "/media/slimbook/easystore": "/home/rosuser/easystore"
+    "/media/slimbook/easystore": "/home/rosuser/easystore",
+    "/media/slimbook/easystore2": "/home/rosuser/easystore2",
+    "/media/slimbook/easystore1": "/home/rosuser/easystore1"
 }
 
 USE_DOCKER = True
@@ -57,24 +59,30 @@ def get_oriented_aspect_ratio(mask):
     return 0.0
 
 
-def process_single_folder(folder_path):
+def process_single_folder(folder_path, results_dir):
     """
-    Procesa una única carpeta: busca el CSV, calcula el OBB desde los PKL,
-    actualiza la columna de pandas y guarda el nuevo CSV directamente.
+    Procesa una única carpeta basándose en el parámetro results_dir dinámico.
     """
     folder_name = os.path.basename(folder_path)
     
-    # 1. Buscar el CSV original
-    csv_path = os.path.join(folder_path, "results_articles_basic", "results", "all_fish_info_raw.csv")
+    # 1. Buscar el CSV original usando la ruta relativa pasada por parámetro
+    csv_path = os.path.join(folder_path, results_dir, "all_fish_info_raw.csv")
     if not os.path.exists(csv_path):
-        cprint(f"  ⏭️ Saltando '{folder_name}': No se encontró el CSV en results_articles_basic/results/", "yellow")
+        cprint(f"  ⏭️ Saltando '{folder_name}': No se encontró el CSV en {results_dir}/", "yellow")
         return False
 
-    # 2. Buscar los archivos .pkl en esa misma carpeta de artículo
-    pkl_files = natsorted(glob.glob(os.path.join(folder_path, "results_articles_basic", "*.pkl")))
+    # 2. Búsqueda inteligente de PKLs (Busca en varios niveles cercanos al CSV)
+    base_results_path = os.path.dirname(csv_path)       # ej: .../results_article_basic/results
+    parent_experiment = os.path.dirname(base_results_path) # ej: .../results_article_basic
+    
+    pkl_files = natsorted(glob.glob(os.path.join(parent_experiment, "*.pkl")))
     if not pkl_files:
-        cprint(f"  ⏭️ Saltando '{folder_name}': No hay archivos .pkl", "yellow")
-        return False
+        pkl_files = natsorted(glob.glob(os.path.join(base_results_path, "*.pkl")))
+        if not pkl_files:
+            pkl_files = natsorted(glob.glob(os.path.join(folder_path, "*.pkl")))
+            if not pkl_files:
+                cprint(f"  ⏭️ Saltando '{folder_name}': No hay archivos .pkl cerca de {results_dir}", "yellow")
+                return False
 
     cprint(f"\n🐟 Procesando: {folder_name} ({len(pkl_files)} frames)", "cyan", attrs=["bold"])
     
@@ -113,8 +121,9 @@ def process_single_folder(folder_path):
         )
 
     # 6. GUARDAR DIRECTAMENTE EL CSV MODIFICADO
-    out_dir = os.path.join(folder_path, "corrected_results")
-    os.makedirs(out_dir, exist_ok=True) # Creamos las carpetas si no existen
+    # Lo guarda en la misma carpeta padre del 'results', pero llamado 'corrected_results'
+    out_dir = os.path.join(parent_experiment, "corrected_results")
+    os.makedirs(out_dir, exist_ok=True) 
     
     out_csv_path = os.path.join(out_dir, "all_fish_info_raw.csv")
     df_raw.to_csv(out_csv_path, index=False)
@@ -122,9 +131,11 @@ def process_single_folder(folder_path):
     cprint(f"  💾 Guardado limpio con Pandas en: {out_csv_path}", "blue")
     return True
 
+
 def main():
     parser = argparse.ArgumentParser(description="Wrapper para corregir el Aspect Ratio en múltiples carpetas de un dataset.")
-    parser.add_argument("--parent_dir", "-p", type=str, default="/media/slimbook/easystore/results_fish_sizing/seleccio_article/2025_05_08/1_peix", help="Carpeta padre que contiene todas las subcarpetas (ej. /dataset/bagfiles)")
+    parser.add_argument("--parent_dir", "-p", type=str, default="/media/slimbook/easystore1/results_fish_sizing/seleccio_article/lanty1/2025_08_21/1_peix/", help="Carpeta padre que contiene todas las subcarpetas")
+    parser.add_argument("--results_dir", "-r", type=str, default="results", help="Subcarpeta donde se encuentra el CSV (ej: 'results' o 'results_article_basic_nou/results')")
     
     args = parser.parse_args()
     
@@ -135,20 +146,28 @@ def main():
         cprint(f"❌ Error: La carpeta padre {args.parent_dir} no existe.", "red")
         sys.exit(1)
 
-    cprint(f"🔍 Buscando carpetas con 'results_articles_basic' en: {args.parent_dir}\n", "magenta", attrs=["bold"])
+    cprint(f"🔍 Búsqueda rápida de 'original_images' en: {args.parent_dir}\n", "magenta", attrs=["bold"])
 
-    # El doble asterisco (**) significa "cualquier cantidad de carpetas intermedias"
-    patron_busqueda = os.path.join(args.parent_dir, "**", "results_articles_basic")
+
+    rutas_encontradas = []
     
-    # IMPORTANTE: Hay que añadir recursive=True para que el ** funcione
-    rutas_encontradas = glob.glob(patron_busqueda, recursive=True)
-    
-    # Nos quedamos con el "dirname" (la carpeta del pez) de los que coincidan
-    subcarpetas = [os.path.dirname(ruta) for ruta in rutas_encontradas if os.path.isdir(ruta)]
-    subcarpetas = natsorted(subcarpetas)
+    for root, dirs, files in os.walk(args.parent_dir):
+        # 1. PODAR EL ÁRBOL: Eliminamos de la lista de carpetas a visitar cualquiera que contenga "frame"
+        # Esto evita que el script pierda tiempo entrando en miles de carpetas de imágenes
+        dirs[:] = [d for d in dirs if "frame" not in d.lower()]
+        
+        # 2. COMPROBAR SI HEMOS LLEGADO AL ANCLA
+        if "original_images" in dirs:
+            rutas_encontradas.append(os.path.join(root, "original_images"))
+            # Opcional: si sabemos que dentro de original_images no hay más original_images, no entramos
+            dirs.remove("original_images")
+
+    # Si encontramos .../12_07_31/0/original_images, nos quedamos con la carpeta padre (.../12_07_31/0)
+    subcarpetas = [os.path.dirname(ruta) for ruta in rutas_encontradas]
+    subcarpetas = natsorted(list(set(subcarpetas)))
     
     if not subcarpetas:
-        cprint(f"⚠️ No se encontró ninguna subcarpeta que contenga 'results_articles_basic'.", "yellow")
+        cprint(f"⚠️ No se encontró ninguna subcarpeta que contenga 'original_images'.", "yellow")
         sys.exit(0)
         
     cprint(f"🎯 Se han encontrado {len(subcarpetas)} carpetas válidas para procesar.\n", "cyan")
@@ -156,11 +175,16 @@ def main():
     carpetas_procesadas = 0
     
     for folder in subcarpetas:
-        exito = process_single_folder(folder)
+        exito = process_single_folder(folder, args.results_dir)
         if exito:
             carpetas_procesadas += 1
 
     cprint(f"\n🎉 ¡Proceso por lotes finalizado! Se actualizaron {carpetas_procesadas} carpetas con éxito.", "green", attrs=["bold"])
+    
+    print("\n[INFO] RUTAS DETECTADAS COMO ANCLAS:")
+    for ruta in rutas_encontradas:
+        print(f" - {ruta}")
+    print("-" * 50)
 
 if __name__ == "__main__":
     main()

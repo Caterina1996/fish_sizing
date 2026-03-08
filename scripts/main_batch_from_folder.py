@@ -25,26 +25,26 @@ from fish_sizing.measurement.fish_sizer import FishSizer
 # Rellena SOLO la ruta del modo que quieras usar. Deja las demás con ""
 
 # 1. Modos de Entrada (El script ejecutará el primero que tenga texto)
-IMAGES_BATCH_DIR = "//media/slimbook/easystore/results_fish_sizing/seleccio_article/2024_11_28/1_peix/pending/" # Modo Batch Imágenes Extraídas
+IMAGES_BATCH_DIR = "/media/slimbook/easystore/results_fish_sizing/seleccio_article/lanty1/2025_08_21/multiple_fish" # Modo Batch Imágenes Extraídas
 BAGS_DIR         = "" # "/media/slimbook/easystore/bagfiles/LIMA/2025/Lanty_2/2025_08_21/"
 IMAGES_SOURCE_DIR= "" # "/ruta/a/una/sola/carpeta"
 BAGFILE_PATH     = "" # "/ruta/a/un/solo.bag"
 
 # 2. Configuración para Imágenes Extraídas (Modo Batch)
 TARGET_IMG_FOLDER     = "original_images"
-OUT_FOLDER_NAME       = "results_article_basic"
-CAMERA_INFO_YAML_PATH = "/media/slimbook/easystore/results_fish_sizing/seleccio_article/2024_11_28/1_peix"
+OUT_FOLDER_NAME       = "results_article_basic_nou"
+CAMERA_INFO_YAML_PATH = "//media/slimbook/easystore/results_fish_sizing/seleccio_article/lanty1/2025_08_21/multiple_fish/"
 IS_PREPROCESSED       = True  # True si las imágenes ya están decimadas/rectificadas
 PRE_SCALE             = 0.5   # Factor de escala al que se guardaron las imágenes
 
 # 3. Salida y Modelos (Para modos que no son Batch Imágenes)
-OUT_PATH   = "/media/slimbook/easystore/results_fish_sizing/seleccio_article/2024_11_28/1_peix/pending/"
+OUT_PATH   = "//media/slimbook/easystore/results_fish_sizing/seleccio_article/lanty1/2025_08_21/multiple_fish/"
 # MODEL_PATH = "/home/slimbook/models/binary/yv11m/Pool_v5-revisada_no_duplicats_from_ckpt/40e_finetune_2/weights/last.pt"
 MODEL_PATH="/home/slimbook/models/binary/yv11m/Pool_v5-revisada_no_duplicats_from_ckpt/40e_finetune_2/weights/last.pt"
 
 # 4. Parámetros del Algoritmo
 CONF_THR          = 0.5
-gt                = 28.9
+gt                = 0
 Visualize_online  = False
 use_wls           = True
 image_channels    = 1 # Si USAMOS EL COLOR CAMBIAR A 3
@@ -73,7 +73,7 @@ TOPICS_DICT = {
 PROCESSING_PIPELINES = {
     "basic": [
         ("match_brightness_linear", {"reference": "left"}, False),
-        ("convert_to_custom_grayscale", {}, False),
+        ("convert_to_custom_grayscale", {"w_g":0.65, "w_b":0.25, "w_r":0.1},False),
         ("apply_clahe", {"clip_limit": 2.0, "grid_size": (8,8)}, False)      
     ],
     
@@ -143,7 +143,7 @@ def save_run_config(out_dir, args):
     }
     
     img_pipeline_steps = PROCESSING_PIPELINES.get(args.selected_pipeline, [])
-    pipeline_readable = [{"step": step[0], "params": step[1], "enabled": step[2]} for step in img_pipeline_steps]
+    pipeline_readable = [{"step": step[0], "params": step[1], "save_debug_image": step[2]} for step in img_pipeline_steps]
 
     full_config = {
         "execution_args": vars(args),
@@ -388,11 +388,15 @@ def main():
     parser.add_argument("--selected_pipeline", default=SELECTED_PIPELINE)
     parser.add_argument("--decimation", type=float, default=0.5)
     
-    # Resto de args (Overlap, Borders, etc)
-    parser.add_argument("--ignore_borders", action="store_true", default=True)
-    parser.add_argument("--ignore_completeness", action="store_true", default=True)
-    parser.add_argument("--ignore_overlap", action="store_true", default=True)
-    parser.add_argument("--overlap_margin", type=float, default=0.05)
+    # Checks para calcular el 3d
+    parser.add_argument("--ignore_borders", action="store_true", default=False, help="Procesa peces aunque toquen bordes")
+    parser.add_argument("--ignore_completeness", action="store_true", default=False, help="Procesa peces incompletos")
+    parser.add_argument("--ignore_overlap", action="store_true", default=True, help="Procesa peces solapados")
+    parser.add_argument("--overlap_margin", type=float, default=0.05, help="Margen Z en metros para solapamientos")
+    
+    # --- LÍNEAS QUE FALTABAN ---
+    parser.add_argument("--ignore_aspect_ratio", action="store_true", default=False, help="Procesa peces cuadrados")
+    parser.add_argument("--aspect_ratio_thr", type=float, default=2.0, help="Aspect ratio check thr para descartar peces frontales")
     
     args = parser.parse_args()
     
