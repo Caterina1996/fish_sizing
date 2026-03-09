@@ -9,9 +9,10 @@ from termcolor import cprint
 
 from pathlib import Path
 import pandas as pd
+   
+from matplotlib.ticker import ScalarFormatter
 
-
-def create_df_from_root_folders(root_dir, output_csv_path, results_dir="corrected_results", gt=None):
+def create_df_from_root_folders(root_dir, folder_code,output_csv_path, results_dir="corrected_results", gt=None):
 
     root_dir = Path(root_dir)
     pattern = f"**/{results_dir}/*_raw.csv"
@@ -32,14 +33,13 @@ def create_df_from_root_folders(root_dir, output_csv_path, results_dir="correcte
                 cprint("WARNING!!! CSV EMPTY!!! ","yellow")
 
             parts = filepath.parts
-            idx = parts.index(results_dir)
-            video_folder = parts[idx-4]
-            video_day = parts[idx-4]
-            folder_code = "-".join(parts[idx-3:idx-1])
+            idx = parts.index(folder_code)
+            video_seq = parts[idx+1]
+
             print("FOLDER CODE IS: ",folder_code)
             # folder_code = filepath.stem.replace("_raw", "")
-            df["video_day"] = video_day
-            df["source_folder"] = folder_code
+            df["video_day"] = folder_code
+            df["source_folder"] = video_seq
             all_dfs.append(df)
 
         except Exception as e:
@@ -61,7 +61,7 @@ def create_df_from_root_folders(root_dir, output_csv_path, results_dir="correcte
     cols = ["video_day"] + ["source_folder"] + [c for c in df_raw.columns if c != "source_folder" and c != "video_day"]
     df_raw = df_raw[cols]
 
-    output_path = Path(output_csv_path) / f"{video_folder}_raw_aggregated.csv"
+    output_path = Path(output_csv_path) / f"{folder_code}_raw_aggregated.csv"
 
     df_raw.to_csv(output_path, index=False)
 
@@ -80,11 +80,11 @@ def classify_failure(row, ASPECT_RATIO_THR=3):
     elif row["does_overlap"]:
         return "overlap"
     
-    elif not row["is_3D_complete"]:
-            return "incomplete_3D"
-    
     elif row["aspect_ratio"] < ASPECT_RATIO_THR:
         return "aspect_ratio_fail"
+    
+    elif not row["is_3D_complete"]:
+        return "incomplete_3D"
     
     else:
         return "other"
@@ -298,6 +298,14 @@ def smart_aggregator(track_df, length_col='filtered_length',num_tracks_threshold
     # if There's not a min number of tracks do not consider this measurement
     if num_frames < num_tracks_threshold: return None
     
+    if track_df.empty:
+        cprint("PROBLEMAAAAAAAAAAAAAAAAAAAAAA!!!","red")
+        # Si no han sobrevivido frames a este filtro, devolvemos un DataFrame vacío bien formateado
+        return pd.DataFrame(columns=[
+            'source_folder', 'track_id', 'n_frames_validos', 
+            'calculated_length_cm', 'gt_cm', 'abs_error_cm', 'mean_elevation_deg'
+        ])
+    
     sorted_lengths = track_df[length_col].dropna().sort_values(ascending=False).tolist()
     if not sorted_lengths: return None
     
@@ -327,6 +335,8 @@ def smart_aggregator(track_df, length_col='filtered_length',num_tracks_threshold
     gt_cm = track_df['gt'].iloc[0]
     calculated_length_cm = rep_len_m * 100.0
     abs_err_cm = abs(calculated_length_cm - gt_cm) if gt_cm > 0 else None
+    
+
     
     return pd.Series({
         'n_frames_validos': num_frames,
@@ -365,42 +375,68 @@ def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
     df_base = df_raw[df_raw['filtered_length'] > 0].copy()
 
     # Definir máscaras paso a paso
-    mask_1 = df_base['is_3D_complete'] == True
-    mask_2 = mask_1 & (df_base['in_image_borders'] == False)
+    # mask_1 = df_base['is_3D_complete'] == True
+    # mask_2 = mask_1 & (df_base['in_image_borders'] == False)
+    # mask_3 = mask_2 & (df_base['does_overlap'] == False)
+    # mask_4 = mask_3 & (df_base['aspect_ratio'] >= ASPECT_RATIO_THR)
+    # mask_5 = mask_4 & df_base['elevation_deg'].notna() & (df_base['elevation_deg'].abs() <= ANGLE_THR)
+    
+    
+    mask_2 = df_base['in_image_borders'] == False
     mask_3 = mask_2 & (df_base['does_overlap'] == False)
     mask_4 = mask_3 & (df_base['aspect_ratio'] >= ASPECT_RATIO_THR)
     mask_5 = mask_4 & df_base['elevation_deg'].notna() & (df_base['elevation_deg'].abs() <= ANGLE_THR)
+    mask_6 =  mask_5 & df_base['is_3D_complete'] == True
 
     # Aplicar smart_aggregator por track en cada etapa
     stages_dict = {
-        "0. Base (HDBSCAN sin filtros)": df_base.groupby(['source_folder','track_id']).apply(smart_aggregator).dropna().reset_index(),
-        "1. + Filtro: is_3D_complete": df_base[mask_1].groupby(['source_folder','track_id']).apply(smart_aggregator).dropna().reset_index(),
-        "2. + Filtro: Sin Bordes": df_base[mask_2].groupby(['source_folder','track_id']).apply(smart_aggregator).dropna().reset_index(),
-        "3. + Filtro: Sin Solapamiento": df_base[mask_3].groupby(['source_folder','track_id']).apply(smart_aggregator).dropna().reset_index(),
-        f"4. + Filtro: Aspect Ratio >= {ASPECT_RATIO_THR}": df_base[mask_4].groupby(['source_folder','track_id']).apply(smart_aggregator).dropna().reset_index(),
-        f"5. + Filtro: Ángulo Z <= {ANGLE_THR}º": df_base[mask_5].groupby(['source_folder','track_id']).apply(smart_aggregator).dropna().reset_index()
+        "0. Base (HDBSCAN sin filtros)": df_base,
+        # "1. + Filtro: is_3D_complete": df_base[mask_1],
+        "2. + Filtro: Sin Bordes": df_base[mask_2],
+        "3. + Filtro: Sin Solapamiento": df_base[mask_3],
+        f"4. + Filtro: Aspect Ratio >= {ASPECT_RATIO_THR}": df_base[mask_4],
+        f"5. + Filtro: Ángulo Z <= {ANGLE_THR}º": df_base[mask_5],
+        f"6. + Filtro: is_3D_complete": df_base[mask_6]
     }
 
     # Contar frames activos en cada paso
-    frames_count = [len(df_base), mask_1.sum(), mask_2.sum(), mask_3.sum(), mask_4.sum(), mask_5.sum()]
+    # frames_count = [len(df_base), mask_1.sum(), mask_2.sum(), mask_3.sum(), mask_4.sum(), mask_5.sum()]
+    frames_count = [len(df_base),  mask_2.sum(), mask_3.sum(), mask_4.sum(), mask_5.sum(),mask_5.sum()]
 
     # Imprimir resumen tabular
     print(f"{'ETAPA DEL PIPELINE (CASCADA)':<45} | {'ERROR MEDIO':<15} | {'FRAMES VIVOS':<15} | {'PECES (TRACKS)'}")
     print("-"*100)
-    for (name, df_stage), f_count in zip(stages_dict.items(), frames_count):
-        if df_stage.empty:
+    for (name, df_filtered), f_count in zip(stages_dict.items(), frames_count):
+        
+        # 1. Are there surviving frames?
+        if df_filtered.empty:
             print(f"{name:<45} | --- VACÍO ---")
             continue
+            
+        # 2. Si hay frames vivos, agrupamos y aplicamos el smart_aggregator AQUÍ
+        df_stage = df_filtered.groupby(['video_day', 'source_folder', 'track_id']).apply(smart_aggregator).dropna()
+        
+        # 3. Seguro extra: ¿Qué pasa si había frames, pero al agruparlos resulta que ningún 
+        #    track llegaba al mínimo de frames y el dropna() lo deja vacío?
+        if df_stage.empty:
+            print(f"{name:<45} | --- DESCARTADOS POR EL AGGREGATOR ---")
+            continue
+            
+        df_stage = df_stage.reset_index()
+        
+        # 4. Cálculo de métricas normales
         mean_err = df_stage['abs_error_cm'].mean()
         std_err = df_stage['abs_error_cm'].std()
         total_tracks = len(df_stage)
+        
         print(f"{name:<45} | {mean_err:>5.2f} ± {std_err:>4.2f} cm | {f_count:>7} frames | {total_tracks:>5} tracks")
 
     # ====================================================
     # Gráficos de impacto
     # ====================================================
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-    stage_names = ["0. Base", "+ 3D_ok", "+ No Bordes", "+ No Solape", "+ AspectRatio", "+ ÁnguloZ"]
+    # stage_names = ["0. Base", "+ 3D_ok", "+ No Bordes", "+ No Solape", "+ AspectRatio", "+ ÁnguloZ"]
+    stage_names = ["0. Base", "+ No Bordes", "+ No Solape", "+ AspectRatio", "+ ÁnguloZ", "+ 3D_ok"]
 
     # --- Panel izquierdo: Error absoluto ---
     plot_data = []
@@ -414,6 +450,16 @@ def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
         sns.boxplot(data=df_plot, x='Error Absoluto (cm)', y='Etapa', palette="viridis", ax=axes[0],
                     showmeans=True, meanprops={"marker":"D", "markerfacecolor":"white",
                                                "markeredgecolor":"black","markersize":7})
+        
+    axes[0].set_xscale('symlog', linthresh=20)
+    axes[0].xaxis.set_major_formatter(ScalarFormatter())
+    
+    # Definimos exactamente qué números queremos que aparezcan escritos en el eje inferior
+    axes[0].set_xticks([0,0.5,1,1.5,2,3,3.5,4,4.5,5,6,7,8, 10, 50])
+    axes[0].tick_params(axis='x', rotation=45)
+    # ==============================================================================
+
+    axes[0].set_title("Evolución del Error Absoluto al aplicar filtros", fontsize=14, fontweight='bold')
     axes[0].set_title("Evolución del Error Absoluto al aplicar filtros", fontsize=14, fontweight='bold')
     axes[0].set_xlabel("Error Absoluto (cm)")
     axes[0].set_ylabel("")
@@ -444,7 +490,18 @@ def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
     plt.tight_layout()
     plt.show()
     
-    return stages_dict, df_base[mask_5].groupby(['source_folder','track_id']).apply(smart_aggregator).dropna().reset_index()
+    df_final = df_base[mask_5]
+    if df_final.empty:
+        df_final_agg = pd.DataFrame()
+    else:
+
+        df_final_agg = df_final.groupby(['video_day', 'source_folder', 'track_id']).apply(smart_aggregator).dropna()
+        if not df_final_agg.empty:
+            df_final_agg = df_final_agg.reset_index()
+
+    return stages_dict, df_final_agg
+    
+    
 
 def plot_smart_filter_explanation_pro(df, folder_code, track_id, length_col='filtered_length', ar_thr=1.8, angle_thr=20.0):
     """
