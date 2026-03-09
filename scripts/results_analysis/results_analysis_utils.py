@@ -11,6 +11,19 @@ from pathlib import Path
 import pandas as pd
    
 from matplotlib.ticker import ScalarFormatter
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from tqdm import tqdm
+import warnings
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator, MaxNLocator
+import warnings
+warnings.filterwarnings('ignore')
 
 def create_df_from_root_folders(root_dir, folder_code,output_csv_path, results_dir="corrected_results", gt=None):
 
@@ -35,11 +48,12 @@ def create_df_from_root_folders(root_dir, folder_code,output_csv_path, results_d
             parts = filepath.parts
             idx = parts.index(folder_code)
             video_seq = parts[idx+1]
+            camera_id = parts[idx+2]
 
             print("FOLDER CODE IS: ",folder_code)
             # folder_code = filepath.stem.replace("_raw", "")
+            df["source_folder"] = f"{video_seq}_{camera_id}"
             df["video_day"] = folder_code
-            df["source_folder"] = video_seq
             all_dfs.append(df)
 
         except Exception as e:
@@ -349,82 +363,60 @@ def smart_aggregator(track_df, length_col='filtered_length',num_tracks_threshold
 
 
 def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
-    """
-    Realiza un estudio de ablation sobre filtros de tracks:
-    - Filtros paso a paso: 3D completo, sin bordes, sin solapamiento, aspect ratio, ángulo
-    - Aplica smart_aggregator a cada etapa
-    - Muestra resumen tabular y gráficos de impacto
-    
-    Parámetros
-    ----------
-    df_raw : pd.DataFrame
-        Debe contener columnas:
-        ['source_folder','track_id','filtered_length','gt',
-         'elevation_deg','aspect_ratio','is_3D_complete',
-         'in_image_borders','does_overlap']
-    ASPECT_RATIO_THR : float
-        Umbral mínimo de aspect ratio para aceptar un frame
-    ANGLE_THR : float
-        Umbral máximo de ángulo Z para aceptar un frame
-    """
     import warnings
     import matplotlib.lines as mlines
+    from matplotlib.ticker import ScalarFormatter
     warnings.filterwarnings('ignore')
 
     # PASO 0: Frames válidos base
     df_base = df_raw[df_raw['filtered_length'] > 0].copy()
 
-    # Definir máscaras paso a paso
-    # mask_1 = df_base['is_3D_complete'] == True
-    # mask_2 = mask_1 & (df_base['in_image_borders'] == False)
-    # mask_3 = mask_2 & (df_base['does_overlap'] == False)
-    # mask_4 = mask_3 & (df_base['aspect_ratio'] >= ASPECT_RATIO_THR)
-    # mask_5 = mask_4 & df_base['elevation_deg'].notna() & (df_base['elevation_deg'].abs() <= ANGLE_THR)
-    
-    
+    # Definir máscaras paso a paso (¡Corregido el paréntesis en mask_6!)
     mask_2 = df_base['in_image_borders'] == False
     mask_3 = mask_2 & (df_base['does_overlap'] == False)
     mask_4 = mask_3 & (df_base['aspect_ratio'] >= ASPECT_RATIO_THR)
     mask_5 = mask_4 & df_base['elevation_deg'].notna() & (df_base['elevation_deg'].abs() <= ANGLE_THR)
-    mask_6 =  mask_5 & df_base['is_3D_complete'] == True
+    mask_6 = mask_5 & (df_base['is_3D_complete'] == True)
 
-    # Aplicar smart_aggregator por track en cada etapa
+    # Diccionario RAW (Frames)
     stages_dict = {
         "0. Base (HDBSCAN sin filtros)": df_base,
-        # "1. + Filtro: is_3D_complete": df_base[mask_1],
-        "2. + Filtro: Sin Bordes": df_base[mask_2],
-        "3. + Filtro: Sin Solapamiento": df_base[mask_3],
-        f"4. + Filtro: Aspect Ratio >= {ASPECT_RATIO_THR}": df_base[mask_4],
-        f"5. + Filtro: Ángulo Z <= {ANGLE_THR}º": df_base[mask_5],
-        f"6. + Filtro: is_3D_complete": df_base[mask_6]
+        "1. + Filtro: Sin Bordes": df_base[mask_2],
+        "2. + Filtro: Sin Solapamiento": df_base[mask_3],
+        f"3. + Filtro: Aspect Ratio >= {ASPECT_RATIO_THR}": df_base[mask_4],
+        f"4. + Filtro: Ángulo Z <= {ANGLE_THR}º": df_base[mask_5],
+        "5. + Filtro: is_3D_complete": df_base[mask_6]
     }
 
-    # Contar frames activos en cada paso
-    # frames_count = [len(df_base), mask_1.sum(), mask_2.sum(), mask_3.sum(), mask_4.sum(), mask_5.sum()]
-    frames_count = [len(df_base),  mask_2.sum(), mask_3.sum(), mask_4.sum(), mask_5.sum(),mask_5.sum()]
+    # Contar frames activos en cada paso (¡Corregido el final!)
+    frames_count = [len(df_base), mask_2.sum(), mask_3.sum(), mask_4.sum(), mask_5.sum(), mask_6.sum()]
+
+    # NUEVO DICCIONARIO PARA GUARDAR LOS TRACKS AGRUPADOS
+    agg_stages_dict = {}
 
     # Imprimir resumen tabular
     print(f"{'ETAPA DEL PIPELINE (CASCADA)':<45} | {'ERROR MEDIO':<15} | {'FRAMES VIVOS':<15} | {'PECES (TRACKS)'}")
     print("-"*100)
+    
     for (name, df_filtered), f_count in zip(stages_dict.items(), frames_count):
         
-        # 1. Are there surviving frames?
         if df_filtered.empty:
             print(f"{name:<45} | --- VACÍO ---")
+            agg_stages_dict[name] = pd.DataFrame()
             continue
             
-        # 2. Si hay frames vivos, agrupamos y aplicamos el smart_aggregator AQUÍ
         df_stage = df_filtered.groupby(['video_day', 'source_folder', 'track_id']).apply(smart_aggregator).dropna()
         
-        # 3. Seguro extra: ¿Qué pasa si había frames, pero al agruparlos resulta que ningún 
-        #    track llegaba al mínimo de frames y el dropna() lo deja vacío?
         if df_stage.empty:
             print(f"{name:<45} | --- DESCARTADOS POR EL AGGREGATOR ---")
+            agg_stages_dict[name] = pd.DataFrame()
             continue
             
         df_stage = df_stage.reset_index()
         
-        # 4. Cálculo de métricas normales
+        # GUARDAMOS EL DATAFRAME AGRUPADO PARA LAS GRÁFICAS
+        agg_stages_dict[name] = df_stage
+        
         mean_err = df_stage['abs_error_cm'].mean()
         std_err = df_stage['abs_error_cm'].std()
         total_tracks = len(df_stage)
@@ -435,12 +427,12 @@ def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
     # Gráficos de impacto
     # ====================================================
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-    # stage_names = ["0. Base", "+ 3D_ok", "+ No Bordes", "+ No Solape", "+ AspectRatio", "+ ÁnguloZ"]
     stage_names = ["0. Base", "+ No Bordes", "+ No Solape", "+ AspectRatio", "+ ÁnguloZ", "+ 3D_ok"]
 
     # --- Panel izquierdo: Error absoluto ---
     plot_data = []
-    for df_stage, short_name in zip(stages_dict.values(), stage_names):
+    # ¡OJO! Ahora iteramos sobre agg_stages_dict (que tiene los tracks, no los frames)
+    for df_stage, short_name in zip(agg_stages_dict.values(), stage_names):
         if not df_stage.empty:
             temp_df = pd.DataFrame({'Etapa': short_name, 'Error Absoluto (cm)': df_stage['abs_error_cm']})
             plot_data.append(temp_df)
@@ -454,12 +446,9 @@ def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
     axes[0].set_xscale('symlog', linthresh=20)
     axes[0].xaxis.set_major_formatter(ScalarFormatter())
     
-    # Definimos exactamente qué números queremos que aparezcan escritos en el eje inferior
-    axes[0].set_xticks([0,0.5,1,1.5,2,3,3.5,4,4.5,5,6,7,8, 10, 50])
+    axes[0].set_xticks([0, 0.5, 1, 1.5, 2, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 10, 50])
     axes[0].tick_params(axis='x', rotation=45)
-    # ==============================================================================
 
-    axes[0].set_title("Evolución del Error Absoluto al aplicar filtros", fontsize=14, fontweight='bold')
     axes[0].set_title("Evolución del Error Absoluto al aplicar filtros", fontsize=14, fontweight='bold')
     axes[0].set_xlabel("Error Absoluto (cm)")
     axes[0].set_ylabel("")
@@ -467,7 +456,8 @@ def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
     axes[0].legend(handles=[mean_legend], loc='lower right')
 
     # --- Panel derecho: Retención de datos ---
-    tracks_count = [len(df) for df in stages_dict.values()]
+    tracks_count = [len(df) for df in agg_stages_dict.values()]
+    
     ax1 = axes[1]
     ax2 = ax1.twinx()
     ax1.plot(stage_names, frames_count, color='#d62728', marker='o', linewidth=2.5, label='Frames Útiles')
@@ -482,7 +472,6 @@ def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
     axes[1].set_title("Retención de Datos tras cada filtro", fontsize=14, fontweight='bold')
     ax1.set_xticklabels(stage_names, rotation=25, ha="right")
 
-    # Combinar leyendas
     lines_1, labels_1 = ax1.get_legend_handles_labels()
     lines_2, labels_2 = ax2.get_legend_handles_labels()
     ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper right')
@@ -490,16 +479,7 @@ def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
     plt.tight_layout()
     plt.show()
     
-    df_final = df_base[mask_5]
-    if df_final.empty:
-        df_final_agg = pd.DataFrame()
-    else:
-
-        df_final_agg = df_final.groupby(['video_day', 'source_folder', 'track_id']).apply(smart_aggregator).dropna()
-        if not df_final_agg.empty:
-            df_final_agg = df_final_agg.reset_index()
-
-    return stages_dict, df_final_agg
+    return stages_dict, agg_stages_dict
     
     
 
@@ -662,3 +642,208 @@ def plot_smart_filter_explanation_pro(df, folder_code, track_id, length_col='fil
 
 # EJEMPLO DE USO: 
 # plot_smart_filter_explanation_pro(df_raw, "12_07_31_0", 1)
+
+
+def plot_thresholds_interaction(df_base, ar_range=None, angles_to_test=None, optimal_ar=3):
+    """
+    Evaluates and plots the interaction between Aspect Ratio and Z-Angle thresholds.
+    It shows how the combination of both affects the absolute error and frame retention.
+    
+    Returns:
+    --------
+    df_interaction: pd.DataFrame with the numerical results of the evaluation.
+    """
+
+    # Default values if not provided as arguments
+    if ar_range is None:
+        ar_range = np.arange(1.0, 5, 0.2)
+    if angles_to_test is None:
+        angles_to_test = [15, 20, 25, 30,60, 90]
+        
+    def evaluate_thresholds(df, ar_thr, angle_thr):
+        # Filter by the given Aspect Ratio and Angle thresholds
+        df_filt = df[(df['aspect_ratio'] >= ar_thr) & (df['elevation_deg'].abs() <= angle_thr)]
+        if df_filt.empty: return np.nan, 0, 0
+        
+        # Group by day, folder, and track_id to prevent mixing tracks from different days
+        df_agg = df_filt.groupby(['video_day', 'source_folder', 'track_id']).apply(smart_aggregator).dropna().reset_index()
+        if df_agg.empty: return np.nan, 0, 0
+        
+        # Calculate metrics
+        mean_err = df_agg['abs_error_cm'].mean()
+        retained_frames = len(df_filt)
+        retained_tracks = len(df_agg)
+        
+        return mean_err, retained_frames, retained_tracks
+
+    # =====================================================================
+    # 3. GATHER COMBINED DATA
+    # =====================================================================
+    print("Calculating interaction between Aspect Ratio and Angle...")
+    results = []
+
+    for ang in tqdm(angles_to_test, desc="Evaluating Angles"):
+        for ar in ar_range:
+            err, frames, tracks = evaluate_thresholds(df_base, ar_thr=ar, angle_thr=ang)
+            
+            # Label for the legend
+            if ang == 90:
+                ang_label = "No Z-Filter (90º)"
+            else:
+                ang_label = f"Angle <= {ang}º"
+                
+            results.append({
+                'Angle_Thr': ang_label,
+                'AR_Thr': ar,
+                'Error_cm': err,
+                'Frames': frames,
+                'Tracks': tracks
+            })
+
+    df_interaction = pd.DataFrame(results)
+
+    # =====================================================================
+    # 4. PLOT INTERACTION (PAPER-READY)
+    # =====================================================================
+    sns.set_theme(style="whitegrid", context="paper", font_scale=1.2)
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+    # Color palette: ensuring good contrast between lines
+    palette = sns.color_palette("Set1", n_colors=len(angles_to_test))
+
+    # --- LEFT PANEL: ABSOLUTE ERROR ---
+    sns.lineplot(data=df_interaction, x='AR_Thr', y='Error_cm', hue='Angle_Thr', 
+                 marker='o', markersize=8, linewidth=2.5, palette=palette, ax=axes[0])
+
+    axes[0].axvline(x=optimal_ar, color='black', linestyle=':', linewidth=2, label=f'Chosen AR Threshold ({optimal_ar})')
+    axes[0].set_title("Interaction: Angle Effect on Error by Aspect Ratio", fontsize=14, fontweight='bold')
+    axes[0].set_xlabel("Minimum Aspect Ratio Threshold (AR)", fontweight='bold')
+    axes[0].set_ylabel("Mean Absolute Error (cm)", fontweight='bold')
+    axes[0].legend(title="Pitch Restriction")
+
+    # --- RIGHT PANEL: RETAINED FRAMES ---
+    sns.lineplot(data=df_interaction, x='AR_Thr', y='Frames', hue='Angle_Thr', 
+                 marker='s', markersize=8, linewidth=2.5, palette=palette, ax=axes[1])
+
+    axes[1].axvline(x=optimal_ar, color='black', linestyle=':', linewidth=2, label=f'Chosen AR Threshold ({optimal_ar})')
+    axes[1].set_title("Data Cost: Retained frames when combining filters", fontsize=14, fontweight='bold')
+    axes[1].set_xlabel("Minimum Aspect Ratio Threshold (AR)", fontweight='bold')
+    axes[1].set_ylabel("Number of Useful Retained Frames", fontweight='bold')
+    axes[1].legend(title="Pitch Restriction")
+
+    plt.tight_layout()
+    plt.show()
+    
+    return df_interaction
+
+def plot_track_evolution_detailed(df, folder_code, track_id, ar_thr=3, angle_thr=20.0):
+    """
+    Plots the temporal evolution of the measurement, aspect ratio, and pitch angle.
+    Shades frames in red that do not meet the quality criteria and marks frames
+    where the 3D measurement failed (length = -1) with a giant red X.
+    """
+    folder_str = str(folder_code)
+    track_str = str(track_id)
+    
+    # Filter data for the specific video and track
+    mask = (df['source_folder'].astype(str) == folder_str) & (df['track_id'].astype(str) == track_str)
+    fish_data = df[mask].copy()
+    
+    if fish_data.empty:
+        print(f"❌ ERROR: No data found for video '{folder_str}' and track '{track_str}'")
+        return
+        
+    # Extract numerical frame ID for proper chronological sorting
+    fish_data['frame_num'] = fish_data['frame_id'].astype(str).str.extract(r'(\d+)').astype(float).astype(int)
+    fish_data = fish_data.sort_values(by='frame_num')
+    
+    gt_cm = fish_data['gt'].iloc[0]
+    gt_m = gt_cm / 100.0 if gt_cm > 0 else None
+    
+    # Identify bad frames based on the thresholds
+    is_3d_ok = fish_data['is_3D_complete'].fillna(False).astype(bool)
+    is_ar_ok = fish_data['aspect_ratio'].fillna(0) >= ar_thr
+    is_angle_ok = fish_data['elevation_deg'].fillna(90).abs() <= angle_thr
+    
+    perfect_mask = is_3d_ok & is_ar_ok & is_angle_ok
+    bad_frames = fish_data[~perfect_mask]['frame_num']
+    
+    # --- CREATE FIGURE WITH 3 PANELS ---
+    fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True, gridspec_kw={'height_ratios': [2, 1, 1]})
+    fig.suptitle(f"Kinematic Analysis and Measurement - [Video: {folder_str} | Track ID: {track_str}]", fontsize=15, fontweight='bold', y=0.96)
+    
+    # ==========================================
+    # PANEL 1: LENGTH 
+    # ==========================================
+    ax1 = axes[0]
+    
+    # 1. Detect where the measurement failed BEFORE cleaning it (-1 means 3D failure)
+    measurement_fail_frames = fish_data[fish_data['filtered_length'] == -1]['frame_num']
+    
+    # 2. Hide the -1s from the continuous line to avoid breaking the Y-axis scale
+    fish_data['raw_length'] = fish_data['raw_length'].replace(-1, np.nan)
+    fish_data['filtered_length'] = fish_data['filtered_length'].replace(-1, np.nan)
+
+    # Draw valid measurement lines
+    ax1.plot(fish_data['frame_num'], fish_data['raw_length'], marker='o', color='orange', alpha=0.6, label='Raw Length 3D')
+    ax1.plot(fish_data['frame_num'], fish_data['filtered_length'], marker='s', color='blue', alpha=0.8, label='Filtered Length (HDBSCAN)')
+    
+    # 3. Draw failures (-1) as red crosses at the bottom of the plot
+    if not measurement_fail_frames.empty:
+        ax1.scatter(measurement_fail_frames, [0.02] * len(measurement_fail_frames), 
+                    color='red', marker='X', s=100, zorder=5, label='3D Measurement Failure (-1)')
+
+    if gt_m is not None:
+        ax1.axhline(y=gt_m, color='green', linestyle='--', linewidth=2.5, label=f'Ground Truth ({gt_m:.3f} m)')
+    
+    # Dynamic Y-Limit (Adapts if there are huge fish or massive errors)
+    max_measured = fish_data[['raw_length', 'filtered_length']].max().max()
+    upper_limit = max(0.45, max_measured + 0.05) if pd.notna(max_measured) else 0.45
+    ax1.set_ylim(0.0, upper_limit)
+    
+    # Detailed grid 
+    ax1.yaxis.set_major_locator(MultipleLocator(0.1))
+    ax1.yaxis.set_minor_locator(MultipleLocator(0.05))
+    ax1.grid(True, which='major', linestyle='-', alpha=0.7)
+    ax1.grid(True, which='minor', linestyle=':', alpha=0.4)
+    
+    ax1.set_ylabel("Measured Length (m)", fontweight='bold')
+    ax1.legend(loc='upper right')
+    
+    # ==========================================
+    # PANEL 2: ASPECT RATIO
+    # ==========================================
+    ax2 = axes[1]
+    ax2.plot(fish_data['frame_num'], fish_data['aspect_ratio'], marker='^', color='purple', linewidth=2)
+    ax2.axhline(y=ar_thr, color='black', linestyle=':', linewidth=2, label=f'AR Threshold ({ar_thr})')
+    
+    ax2.set_ylabel("Aspect Ratio", fontweight='bold')
+    ax2.grid(True, linestyle='--', alpha=0.5)
+    ax2.legend(loc='upper right')
+    
+    # ==========================================
+    # PANEL 3: ELEVATION ANGLE (PITCH)
+    # ==========================================
+    ax3 = axes[2]
+    ax3.plot(fish_data['frame_num'], fish_data['elevation_deg'], marker='v', color='brown', linewidth=2)
+    ax3.axhline(y=angle_thr, color='black', linestyle=':', linewidth=2, label=f'Angle Threshold (±{angle_thr}º)')
+    ax3.axhline(y=-angle_thr, color='black', linestyle=':', linewidth=2)
+    
+    ax3.set_ylabel("Z-Angle (Pitch) (º)", fontweight='bold')
+    ax3.set_xlabel("Frame Number", fontsize=12, fontweight='bold')
+    ax3.grid(True, linestyle='--', alpha=0.5)
+    ax3.legend(loc='upper right')
+    
+    # ==========================================
+    # SHADE BAD FRAMES ON ALL 3 PANELS
+    # ==========================================
+    for ax in axes:
+        for bf in bad_frames:
+            # Soft red shadow to indicate the frame is discarded
+            ax.axvspan(bf - 0.5, bf + 0.5, color='red', alpha=0.15)
+            
+    # Force integers on the shared X-axis (We don't want frame 2.5)
+    axes[2].xaxis.set_major_locator(MaxNLocator(integer=True))
+    
+    plt.tight_layout()
+    plt.show()
