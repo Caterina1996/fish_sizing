@@ -24,7 +24,7 @@ class Bagfile_fauna():
         self.columns_order = [
             'frame_id', 'class_name', 'object_id', 'track_id', 
             'is_3D_complete', 'in_image_borders', 'does_overlap', 'is_front_fish', 
-            'aspect_ratio', 'fish_3d_ok', 'overlapping_fish_ids', 
+            'aspect_ratio', 'pointcloud_size_ok','fish_3d_ok', 'overlapping_fish_ids', 
             'fish_direction', 'elevation_deg', 'azimuth_deg', 
             'raw_length', 'filtered_length', 'spine_length', 
             'gt', 'abs_error_cm', 'rel_error_%', 'fish_dist_from_camera'
@@ -54,6 +54,7 @@ class Bagfile_fauna():
             'filtered_length': getattr(fish, 'filtered_length', -1),
             'spine_length': getattr(fish, 'spine_length', -1),
             'gt': self.gt,
+            'pointcloud_size_ok': getattr(fish, 'pointcloud_size_ok', False),
             'abs_error_cm': None, 
             'rel_error_%': None,  
             'fish_dist_from_camera': getattr(fish, 'fish_dist_from_camera', -1)
@@ -80,6 +81,7 @@ class Bagfile_fauna():
             'filtered_length': None,
             'spine_length': None,
             'gt': self.gt,
+            'pointcloud_size_ok': None,
             'abs_error_cm': None,
             'rel_error_%': None,
             'fish_dist_from_camera': None

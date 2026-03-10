@@ -736,16 +736,19 @@ def plot_thresholds_interaction(df_base, ar_range=None, angles_to_test=None, opt
     
     return df_interaction
 
-def plot_track_evolution_detailed(df, folder_code, track_id, ar_thr=3, angle_thr=20.0):
+def plot_track_evolution_detailed(df, folder_code, track_id, ar_thr=3, angle_thr=20.0, dev_median=1.5, zoom_margin_cm=5.0):
     """
     Plots the temporal evolution of the measurement, aspect ratio, and pitch angle.
-    Shades frames in red that do not meet the quality criteria and marks frames
-    where the 3D measurement failed (length = -1) with a giant red X.
+    - Uses a 4-panel layout to provide both a 'Global' and a 'Zoomed' high-resolution view of the length.
+    - Shades frames in red that fail AR/Angle thresholds.
+    - Marks 3D measurement failures (-1) with a red X at the bottom.
+    - Simulates the `smart_aggregator` to mark Outliers, Ignored, and Selected points.
     """
+
+    
     folder_str = str(folder_code)
     track_str = str(track_id)
     
-    # Filter data for the specific video and track
     mask = (df['source_folder'].astype(str) == folder_str) & (df['track_id'].astype(str) == track_str)
     fish_data = df[mask].copy()
     
@@ -753,14 +756,13 @@ def plot_track_evolution_detailed(df, folder_code, track_id, ar_thr=3, angle_thr
         print(f"❌ ERROR: No data found for video '{folder_str}' and track '{track_str}'")
         return
         
-    # Extract numerical frame ID for proper chronological sorting
     fish_data['frame_num'] = fish_data['frame_id'].astype(str).str.extract(r'(\d+)').astype(float).astype(int)
     fish_data = fish_data.sort_values(by='frame_num')
     
     gt_cm = fish_data['gt'].iloc[0]
     gt_m = gt_cm / 100.0 if gt_cm > 0 else None
     
-    # Identify bad frames based on the thresholds
+    # 1. Threshold Masks
     is_3d_ok = fish_data['is_3D_complete'].fillna(False).astype(bool)
     is_ar_ok = fish_data['aspect_ratio'].fillna(0) >= ar_thr
     is_angle_ok = fish_data['elevation_deg'].fillna(90).abs() <= angle_thr
@@ -768,82 +770,133 @@ def plot_track_evolution_detailed(df, folder_code, track_id, ar_thr=3, angle_thr
     perfect_mask = is_3d_ok & is_ar_ok & is_angle_ok
     bad_frames = fish_data[~perfect_mask]['frame_num']
     
-    # --- CREATE FIGURE WITH 3 PANELS ---
-    fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True, gridspec_kw={'height_ratios': [2, 1, 1]})
-    fig.suptitle(f"Kinematic Analysis and Measurement - [Video: {folder_str} | Track ID: {track_str}]", fontsize=15, fontweight='bold', y=0.96)
-    
     # ==========================================
-    # PANEL 1: LENGTH 
+    # AGGREGATOR SIMULATION (Find Outliers & Selected)
     # ==========================================
-    ax1 = axes[0]
+    valid_df = fish_data[perfect_mask & (fish_data['filtered_length'] > 0)].copy()
     
-    # 1. Detect where the measurement failed BEFORE cleaning it (-1 means 3D failure)
+    outliers_idx, used_indices, ignored_indices = [], [], []
+    final_calculated_length = np.nan
+    
+    if not valid_df.empty:
+        valid_lengths = valid_df['filtered_length'].tolist()
+        indices = valid_df.index.tolist()
+        
+        sorted_pairs = sorted(zip(valid_lengths, indices), key=lambda x: x[0], reverse=True)
+        lengths = [x[0] for x in sorted_pairs]
+        idxs = [x[1] for x in sorted_pairs]
+        
+        if len(lengths) >= 5:
+            while len(lengths) > 2:
+                c_max, n_max = lengths[0], lengths[1]
+                c_med = np.median(lengths)
+                
+                if c_max > c_med * dev_median:
+                    outliers_idx.append(idxs.pop(0))
+                    lengths.pop(0)
+                    continue
+                    
+                if (c_max - n_max) / n_max > 0.05:
+                    outliers_idx.append(idxs.pop(0))
+                    lengths.pop(0)
+                else:
+                    break
+                    
+        if len(valid_df) < 20:
+            if idxs: used_indices = [idxs[0]]
+        else:
+            n_top = max(1, int(len(lengths) * 0.2))
+            used_indices = idxs[:n_top]
+            
+        ignored_indices = [i for i in idxs if i not in used_indices]
+        if used_indices:
+            final_calculated_length = valid_df.loc[used_indices, 'filtered_length'].mean()
+
+    # Hide -1s for plotting lines
     measurement_fail_frames = fish_data[fish_data['filtered_length'] == -1]['frame_num']
-    
-    # 2. Hide the -1s from the continuous line to avoid breaking the Y-axis scale
     fish_data['raw_length'] = fish_data['raw_length'].replace(-1, np.nan)
     fish_data['filtered_length'] = fish_data['filtered_length'].replace(-1, np.nan)
 
-    # Draw valid measurement lines
-    ax1.plot(fish_data['frame_num'], fish_data['raw_length'], marker='o', color='orange', alpha=0.6, label='Raw Length 3D')
-    ax1.plot(fish_data['frame_num'], fish_data['filtered_length'], marker='s', color='blue', alpha=0.8, label='Filtered Length (HDBSCAN)')
+    # --- CREATE FIGURE WITH 4 PANELS ---
+    # We allocate more height to the length panels
+    fig, axes = plt.subplots(4, 1, figsize=(14, 14), sharex=True, gridspec_kw={'height_ratios': [1.5, 2, 1, 1]})
+    fig.suptitle(f"Kinematic & Aggregator Analysis - [Video: {folder_str} | Track: {track_str}]", fontsize=16, fontweight='bold', y=0.96)
     
-    # 3. Draw failures (-1) as red crosses at the bottom of the plot
-    if not measurement_fail_frames.empty:
-        ax1.scatter(measurement_fail_frames, [0.02] * len(measurement_fail_frames), 
-                    color='red', marker='X', s=100, zorder=5, label='3D Measurement Failure (-1)')
+    # ==========================================
+    # PANELS 0 & 1: LENGTH (GLOBAL & ZOOMED)
+    # ==========================================
+    # We loop to draw the exact same data on both the Global and the Zoomed axes
+    for idx, ax in enumerate([axes[0], axes[1]]):
+        ax.plot(fish_data['frame_num'], fish_data['raw_length'], marker='.', color='orange', alpha=0.3, label='Raw Length 3D')
+        ax.plot(fish_data['frame_num'], fish_data['filtered_length'], color='gray', alpha=0.3, zorder=1)
+        
+        if ignored_indices:
+            ax.scatter(valid_df.loc[ignored_indices, 'frame_num'], valid_df.loc[ignored_indices, 'filtered_length'], 
+                        color='#1f77b4', marker='s', s=40, zorder=3, alpha=0.7, label='Valid Frame (Ignored)')
+                        
+        if outliers_idx:
+            ax.scatter(valid_df.loc[outliers_idx, 'frame_num'], valid_df.loc[outliers_idx, 'filtered_length'], 
+                        color='#ff7f0e', marker='X', s=100, zorder=4, label='Aggregator Outlier (Jump/Peak)')
+                        
+        if used_indices:
+            ax.scatter(valid_df.loc[used_indices, 'frame_num'], valid_df.loc[used_indices, 'filtered_length'], 
+                        color='#2ca02c', marker='*', s=200, edgecolor='black', zorder=5, label='Selected (Top 20% Avg)')
+            ax.axhline(y=final_calculated_length, color='#2ca02c', linestyle='-', linewidth=2.5, label=f'Calculated Output ({final_calculated_length:.3f} m)')
 
-    if gt_m is not None:
-        ax1.axhline(y=gt_m, color='green', linestyle='--', linewidth=2.5, label=f'Ground Truth ({gt_m:.3f} m)')
-    
-    # Dynamic Y-Limit (Adapts if there are huge fish or massive errors)
+        if not measurement_fail_frames.empty:
+            ax.scatter(measurement_fail_frames, [0.02] * len(measurement_fail_frames), color='red', marker='X', s=100, zorder=5, label='3D Failure (-1)')
+
+        if gt_m is not None:
+            ax.axhline(y=gt_m, color='green', linestyle='--', linewidth=2.5, label=f'Ground Truth ({gt_m:.3f} m)')
+
+    # --- Formatting Panel 0: GLOBAL VIEW (Coarse Jumps) ---
     max_measured = fish_data[['raw_length', 'filtered_length']].max().max()
     upper_limit = max(0.45, max_measured + 0.05) if pd.notna(max_measured) else 0.45
-    ax1.set_ylim(0.0, upper_limit)
+    axes[0].set_ylim(0.0, upper_limit)
+    axes[0].yaxis.set_major_locator(MultipleLocator(0.1)) # Large 10cm jumps
+    axes[0].grid(True, which='major', linestyle='-', alpha=0.7)
+    axes[0].set_ylabel("Global Length (m)", fontweight='bold')
+    axes[0].set_title("Global View (Coarse Resolution: 0.1m steps)", fontsize=11)
+    axes[0].legend(loc='upper left', bbox_to_anchor=(1.01, 1), borderaxespad=0.) # Only one legend needed
     
-    # Detailed grid 
-    ax1.yaxis.set_major_locator(MultipleLocator(0.1))
-    ax1.yaxis.set_minor_locator(MultipleLocator(0.05))
-    ax1.grid(True, which='major', linestyle='-', alpha=0.7)
-    ax1.grid(True, which='minor', linestyle=':', alpha=0.4)
-    
-    ax1.set_ylabel("Measured Length (m)", fontweight='bold')
-    ax1.legend(loc='upper right')
-    
+    # --- Formatting Panel 1: ZOOMED VIEW (Fine Jumps) ---
+    zoom_center = gt_m if gt_m is not None else (final_calculated_length if pd.notna(final_calculated_length) else 0.2)
+    zoom_margin_m = zoom_margin_cm / 100.0
+    axes[1].set_ylim(zoom_center - zoom_margin_m, zoom_center + zoom_margin_m)
+    axes[1].yaxis.set_major_locator(MultipleLocator(0.01)) # Ultra-fine 1cm (0.01m) jumps
+    axes[1].grid(True, which='major', linestyle='-', alpha=0.8)
+    axes[1].set_ylabel("Zoomed Length (m)", fontweight='bold')
+    axes[1].set_title(f"Zoomed View (Fine Resolution: 0.01m steps | Center ±{zoom_margin_cm}cm)", fontsize=11)
+
     # ==========================================
     # PANEL 2: ASPECT RATIO
     # ==========================================
-    ax2 = axes[1]
+    ax2 = axes[2]
     ax2.plot(fish_data['frame_num'], fish_data['aspect_ratio'], marker='^', color='purple', linewidth=2)
     ax2.axhline(y=ar_thr, color='black', linestyle=':', linewidth=2, label=f'AR Threshold ({ar_thr})')
-    
     ax2.set_ylabel("Aspect Ratio", fontweight='bold')
     ax2.grid(True, linestyle='--', alpha=0.5)
-    ax2.legend(loc='upper right')
+    ax2.legend(loc='upper left', bbox_to_anchor=(1.01, 1))
     
     # ==========================================
     # PANEL 3: ELEVATION ANGLE (PITCH)
     # ==========================================
-    ax3 = axes[2]
+    ax3 = axes[3]
     ax3.plot(fish_data['frame_num'], fish_data['elevation_deg'], marker='v', color='brown', linewidth=2)
     ax3.axhline(y=angle_thr, color='black', linestyle=':', linewidth=2, label=f'Angle Threshold (±{angle_thr}º)')
     ax3.axhline(y=-angle_thr, color='black', linestyle=':', linewidth=2)
-    
-    ax3.set_ylabel("Z-Angle (Pitch) (º)", fontweight='bold')
+    ax3.set_ylabel("Z-Angle (º)", fontweight='bold')
     ax3.set_xlabel("Frame Number", fontsize=12, fontweight='bold')
     ax3.grid(True, linestyle='--', alpha=0.5)
-    ax3.legend(loc='upper right')
+    ax3.legend(loc='upper left', bbox_to_anchor=(1.01, 1))
     
     # ==========================================
-    # SHADE BAD FRAMES ON ALL 3 PANELS
+    # SHADE BAD FRAMES ON ALL PANELS
     # ==========================================
     for ax in axes:
         for bf in bad_frames:
-            # Soft red shadow to indicate the frame is discarded
             ax.axvspan(bf - 0.5, bf + 0.5, color='red', alpha=0.15)
             
-    # Force integers on the shared X-axis (We don't want frame 2.5)
-    axes[2].xaxis.set_major_locator(MaxNLocator(integer=True))
-    
+    axes[3].xaxis.set_major_locator(MaxNLocator(integer=True))
     plt.tight_layout()
     plt.show()

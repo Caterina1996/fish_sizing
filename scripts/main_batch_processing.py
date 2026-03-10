@@ -18,17 +18,7 @@ from fish_sizing.detection.fish_detector import FishDetector
 from fish_sizing.measurement.fish3D import Fish3D
 from fish_sizing.analysis.bagfile_fauna import Bagfile_fauna
 from fish_sizing.measurement.fish_sizer import FishSizer
-
-# --- CONFIGURACIÓN ---
-PATH_MAPPINGS = {
-    "/home/slimbook/bagfiles": "/home/rosuser/dataset/bagfiles",
-    "/home/slimbook/fish_sizing/out": "/home/rosuser/repo/out",
-    "/home/slimbook/models": "/home/rosuser/dataset/models/",
-    "/home/slimbook/fish_sizing/config" :"/home/rosuser/repo/config/",
-    "/media/slimbook/easystore": "/home/rosuser/easystore"
-}
-
-USE_DOCKER = True
+from fish_sizing.utils.docker_path_mappings import transform_path2docker
 
 BAGS_DIR="//media/slimbook/easystore/bagfiles/seleccio_article/2025_08_21/lanty_1/multiple_fish/"
 MODEL_PATH="/home/slimbook/models/binary/yv11m/Pool_v5-revisada_no_duplicats_from_ckpt/40e_finetune_2/weights/last.pt"
@@ -65,19 +55,6 @@ PROCESSING_PIPELINES = {
     ]
 }
 
-# --- FUNCIONES AUXILIARES ---
-def transform_path2docker(path: str) -> str:
-    """Transform a path from local computer to docker structure."""
-    if not USE_DOCKER or path is None:
-        return path
-
-    for host_path, docker_path in PATH_MAPPINGS.items():
-        if host_path in path:
-            new_path = path.replace(host_path, docker_path)
-            # cprint(f"🔄 Path mapped: {path} \n   -> {new_path}", "yellow")
-            return new_path 
-            
-    return path
 
 def save_run_config(out_dir, args):
     """Guarda toda la configuración de la ejecución en un archivo YAML para reproducibilidad."""

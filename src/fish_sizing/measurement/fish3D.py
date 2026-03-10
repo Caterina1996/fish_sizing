@@ -113,7 +113,7 @@ class Fish3D(Fish2D):
                                                      plot_fish_direction=True,
                                                      filtered=True):
         """
-        Mide el pez usando PCA directamente sobre los datos en memoria (Numpy).
+        Mide el pez usando PCA 
         """
         
         # 1. Seleccionar nube de puntos
@@ -126,6 +126,7 @@ class Fish3D(Fish2D):
         
         # Validaciones
         if points is None or len(points) < 10:
+            self.pointcloud_size_ok = False
             print(f"⚠️ No hay puntos suficientes para medir ({label_type}).")
             return
             
@@ -144,9 +145,14 @@ class Fish3D(Fish2D):
         
         if pca_confidence_ratio < 2.5:
             print(colored(f"⚠️ Pez {self.track_id} descartado: Está de cara o su 3D es muy redondo (PCA Ratio: {pca_confidence_ratio:.2f})", "red"))
+            self.pointcloud_size_ok = False
+            self.fish_3d_ok = False
             self.length = -1
             self.filtered_length = -1
             return
+        else:
+           self.pointcloud_size_ok = True 
+
 
         # El componente principal (eigenvector con mayor varianza) es la dirección del pez
         principal_components = pca.components_

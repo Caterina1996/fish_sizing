@@ -111,13 +111,13 @@ def process_single_folder(folder_path, results_dir):
 
     cprint(f"  ✅ {cambios} Aspect Ratios re-calculados usando OBB.", "green")
 
-    # 5. Actualizar la regla fish_3d_ok
+    # 5. Check fish_3d_ok
     if 'fish_3d_ok' in df_raw.columns:
         df_raw['fish_3d_ok'] = (
             (df_raw['aspect_ratio'] >= 1.8) & 
-            (df_raw['is_3D_complete'] == True) & 
-            (df_raw['in_image_borders'] == False) & 
-            (df_raw['does_overlap'] == False)
+            (df_raw['is_3D_complete'].isin([1, 1.0, True, "1", "True"])) & 
+            (df_raw['in_image_borders'].isin([0, 0.0, False, "0", "False"])) & 
+            (df_raw['does_overlap'].isin([0, 0.0, False, "0", "False"]))
         )
 
     # 6. GUARDAR DIRECTAMENTE EL CSV MODIFICADO

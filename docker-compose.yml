@@ -23,6 +23,8 @@ services:
       - ./:/home/rosuser/repo
       - ${DATASET}:/home/rosuser/dataset:rw
       - /media/slimbook/easystore/:/home/rosuser/easystore/:rw
+      - /media/slimbook/easystore2/:/home/rosuser/easystore2/:rw
+      - /media/slimbook/easystore1/:/home/rosuser/easystore1/:rw
       # - ${FISH_SIZING_PATH:-./external_repos/DL_utils}:/home/rosuser/repo/src/DL_utils/:rw
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${XAUTHORITY:-/run/user/1000/gdm/Xauthority}:/home/rosuser/.Xauthority:rw
