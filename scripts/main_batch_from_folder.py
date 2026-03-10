@@ -18,6 +18,7 @@ from fish_sizing.detection.fish_detector import FishDetector
 from fish_sizing.measurement.fish3D import Fish3D
 from fish_sizing.analysis.bagfile_fauna import Bagfile_fauna
 from fish_sizing.measurement.fish_sizer import FishSizer
+from fish_sizing.utils.tools import save_run_config, cprint_and_log, move_inferred_images
 
 # ==========================================
 # --- CONFIGURACIÓN DE RUTAS POR DEFECTO ---

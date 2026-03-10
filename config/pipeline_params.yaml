@@ -1,0 +1,20 @@
+# ==========================================
+# CONFIGURACIÓN DEL PIPELINE DE PROCESAMIENTO
+# ==========================================
+
+# --- Parámetros de Imagen ---
+decimation: 0.5           # Factor de escala (0.5 = mitad de resolución)
+image_channels: 1         # 1 para escala de grises, 3 para color
+pipeline_name: "basic"    # Nombre del pipeline definido en config.py
+
+# --- Parámetros de Inferencia (YOLO) ---
+model_path: "/home/slimbook/models/binary/yv11m/Pool_v5-revisada_no_duplicats_from_ckpt/40e_finetune_2/weights/last.pt"
+conf_thr: 0.5             # Umbral de confianza para detección
+
+# --- Parámetros de Estéreo y Medición ---
+use_wls: True             # Aplicar filtro WLS a la disparidad
+gt: True                  # Si se dispone de Ground Truth o metadatos de fauna
+visualize: False          # Mostrar ventanas de OpenCV durante el proceso
+
+# --- Otros ---
+save_debug: False          # Guardar imágenes de diagnóstico (*_debug.jpg)

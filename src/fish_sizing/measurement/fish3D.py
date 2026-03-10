@@ -638,6 +638,41 @@ class Fish3D(Fish2D):
             
             
 #--------------------------------------------------------------------------------------------------
+def measure_curved_length_optimized(self, num_slices=20):
+    points = self.pointcloud_filtered
+    if points is None or len(points) < 100: return 0.0
+
+    # 1. Alineación PCA
+    pca = PCA(n_components=3)
+    rotated_points = pca.fit_transform(points)
     
+    # 2. Slicing adaptativo
+    x_min, x_max = np.percentile(rotated_points[:,0], [0.5, 99.5])
+    slices = np.linspace(x_min, x_max, num_slices)
+    centroids = []
+
+    for i in range(len(slices)-1):
+        mask = (rotated_points[:,0] >= slices[i]) & (rotated_points[:,0] < slices[i+1])
+        if np.any(mask):
+            centroids.append(np.median(rotated_points[mask], axis=0))
+
+    if len(centroids) < 5: return self.length # Fallback al PCA si no hay puntos
+
+    centroids = np.array(centroids)
+    
+    # 3. Ajuste polinómico (Grado 2 para evitar oscilaciones)
+    z_poly = np.polyfit(centroids[:,0], centroids[:,1], 2)
+    y_poly = np.polyfit(centroids[:,0], centroids[:,2], 2)
+    
+    # 4. Cálculo de longitud de arco integrada
+    x_fine = np.linspace(x_min, x_max, 200)
+    # Derivadas para la fórmula de longitud de arco: sqrt(1 + f'(x)^2 + g'(x)^2)
+    dz_dx = np.polyder(z_poly)(x_fine)
+    dy_dx = np.polyder(y_poly)(x_fine)
+    
+    arc_len = np.trapz(np.sqrt(1 + dz_dx**2 + dy_dx**2), x_fine)
+    
+    self.spine_length = arc_len
+    return arc_len
 
 

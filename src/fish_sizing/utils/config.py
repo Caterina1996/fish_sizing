@@ -6,7 +6,7 @@ from termcolor import cprint
 # PROCESSING PIPELINES
 # ==========================================
 
-# Default del convert_custom_linear for context
+# Default del convert_custom_linear
 # convert_to_custom_grayscale(self,w_g=0.7,w_b=0.3,w_r=0.0)
 
 PROCESSING_PIPELINES = {
@@ -39,6 +39,18 @@ PROCESSING_PIPELINES = {
 }
 
 # ==========================================
+# 3. ROS BAG TOPICS DEFINITION
+# ==========================================
+# Define the base topics for the stereo camera. 
+# The extraction script will automatically check for '/compressed' variants.
+TOPICS_DICT = { 
+    "left":   "/stereo_ch3/left/image_raw",
+    "right":  "/stereo_ch3/right/image_raw", 
+    "info_l": "/stereo_ch3/left/camera_info",
+    "info_r": "/stereo_ch3/right/camera_info"
+}
+
+# ==========================================
 # DOCKER PATH MAPPINGS
 # ==========================================
 USE_DOCKER = True
@@ -65,4 +77,3 @@ def transform_path2docker(path: str,use_docker=USE_DOCKER) -> str:
             new_path = path.replace(host_path, docker_path)
             cprint(f"🔄 Path mapped: {path} \n   -> {new_path}", "yellow")
             return new_path    
-    return path

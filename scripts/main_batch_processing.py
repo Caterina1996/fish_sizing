@@ -18,7 +18,8 @@ from fish_sizing.detection.fish_detector import FishDetector
 from fish_sizing.measurement.fish3D import Fish3D
 from fish_sizing.analysis.bagfile_fauna import Bagfile_fauna
 from fish_sizing.measurement.fish_sizer import FishSizer
-from fish_sizing.utils.docker_path_mappings import transform_path2docker
+from fish_sizing.utils.config import transform_path2docker
+from fish_sizing.utils.tools import save_run_config, cprint_and_log, move_inferred_images
 
 BAGS_DIR="//media/slimbook/easystore/bagfiles/seleccio_article/2025_08_21/lanty_1/multiple_fish/"
 MODEL_PATH="/home/slimbook/models/binary/yv11m/Pool_v5-revisada_no_duplicats_from_ckpt/40e_finetune_2/weights/last.pt"
@@ -28,73 +29,10 @@ gt = ""
 Visualize_online = False
 use_wls = True
 
-OUT_PATH = "//media/slimbook/easystore/results_fish_sizing/seleccio_article/lanty1/2025_08_21/multiple_fish/"
+OUT_PATH = "/media/slimbook/easystore/results_fish_sizing/seleccio_article/lanty1/2025_08_21/multiple_fish/"
 SELECTED_PIPELINE = "basic"
-image_channels = 1 #si USAM EL COLOR CANVIAR A 3
+image_channels = 1 # ATTENTION!!! CHANGE TO 3 FOR PIPELINES THAT USE COLOR IMAGES AS OUTPUT
 
-# --- CONFIGURACIÓN DE PIPELINES ---
-PROCESSING_PIPELINES = {
-    "raw": [],
-    
-    "basic": [
-        ("match_brightness_linear", {"reference": "left"}, False),
-        ("convert_to_custom_grayscale", {}, False),
-        ("apply_clahe", {"clip_limit": 2.0, "grid_size": (8,8)}, False)
-    ],
-    
-    "sharp": [
-        ("apply_gamma", {"gamma": 1.2}, False),
-        ("apply_sharpen", {"alpha": 1.7}, False),
-        ("convert_to_custom_grayscale", {}, False)
-    ],
-    
-    "clean_edges": [
-        ("apply_bilateral", {"d": 7, "sigma_color": 50, "sigma_space": 50}, False),
-        ("convert_to_custom_grayscale", {}, False),
-        ("apply_clahe", {"clip_limit": 1.5, "grid_size": (8,8)}, False)
-    ]
-}
-
-
-def save_run_config(out_dir, args):
-    """Guarda toda la configuración de la ejecución en un archivo YAML para reproducibilidad."""
-    
-    # 1. Leer el archivo de configuración estéreo original
-    stereo_cfg = {}
-    if os.path.exists(args.stereo_config):
-        with open(args.stereo_config, 'r') as f:
-            stereo_cfg = yaml.safe_load(f)
-            
-    # 2. Recopilar la configuración global y variables estáticas
-    globals_cfg = {
-        "MODEL_PATH": args.model_path,
-        "CONF_THR": CONF_THR,
-        "gt_ground_truth": gt,
-        "Visualize_online": Visualize_online,
-        "use_wls": use_wls,
-        "image_channels": image_channels,
-        "selected_pipeline_name": args.selected_pipeline
-    }
-    
-    # 3. Obtener el pipeline de imagen exacto que se va a aplicar
-    img_pipeline_steps = PROCESSING_PIPELINES.get(args.selected_pipeline, [])
-    # Formatearlo para que sea legible en el YAML
-    pipeline_readable = [{"step": step[0], "params": step[1], "enabled": step[2]} for step in img_pipeline_steps]
-
-    # 4. Agrupar todo en un gran diccionario
-    full_config = {
-        "execution_args": vars(args),
-        "global_variables": globals_cfg,
-        "image_processing_pipeline": pipeline_readable,
-        "stereo_configuration": stereo_cfg
-    }
-    
-    # 5. Guardar en disco
-    config_path = os.path.join(out_dir, "run_config.yaml")
-    with open(config_path, 'w') as f:
-        yaml.dump(full_config, f, default_flow_style=False, sort_keys=False)
-        
-    cprint(f"📄 Archivo de configuración guardado en: {config_path}", "green")
 
 def stream_stereo_from_folder(folder_path):
     """Generador que lee pares de imágenes desde una carpeta."""
@@ -124,27 +62,7 @@ def stream_stereo_from_folder(folder_path):
         frame_id_simulated = f_left.split(".")[0] 
         yield frame_id_simulated, img_l, img_r
 
-def move_inferred_images(out_path):
-    """Mueve todas las imágenes *_inferred.* a una subcarpeta _inferred"""
-    inferred_dir = os.path.join(out_path, "_inferred")
-    os.makedirs(inferred_dir, exist_ok=True)
-    
-    out_p = Path(out_path)
-    moved_count = 0
-    
-    # Buscar en toda la carpeta de salida
-    for file_path in out_p.rglob("*_inferred*.*"):
-        # Ignorar si ya está dentro de la carpeta _inferred
-        if "_inferred" in file_path.parent.parts:
-            continue
-        
-        if file_path.is_file():
-            dest_path = os.path.join(inferred_dir, file_path.name)
-            shutil.move(str(file_path), dest_path)
-            moved_count += 1
-            
-    if moved_count > 0:
-        cprint(f"✅ Se han movido {moved_count} imágenes a la carpeta _inferred/", "green")
+
 
 
 # --- CORE DEL PIPELINE (Extraído del main original) ---

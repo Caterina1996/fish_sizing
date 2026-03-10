@@ -7,6 +7,8 @@ import rosbag
 import cv2
 from typing import TypedDict, List, Dict, Any
 from termcolor import cprint
+import logging
+from fish_sizing.utils.tools import cprint_and_log
 
 # Para evitar un error con python 3.9...
 # Això no és lo seu pero bueno...
@@ -41,7 +43,7 @@ class CvBridge:
                 img = img_buf.reshape(img_msg.height, img_msg.width)
         except ValueError as e:
             # Fallback de emergencia
-            print(f"❌ Error reshape: {e}")
+            cprint_and_log(f"❌ Error de reshape en CvBridge: {e}", "red", level=logging.ERROR)
             return np.zeros((img_msg.height, img_msg.width, 3), dtype=np.uint8)
             
         # 4. LÓGICA DE COLOR Y DEBAYERING
@@ -72,7 +74,13 @@ class CvBridge:
                 try:
                     img = cv2.cvtColor(img, code)
                 except Exception:
-                    pass # Si falla, devolvemos la imagen en gris
+                    cprint_and_log(f"⚠️ Fallo al revelar RAW/Bayer '{encoding}': {e}. Forzando paso a gris.", "yellow", level=logging.WARNING)
+                    img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR) 
+            else:
+                # If it's a standard mono8 image, explicitly convert it 
+                # so it returns a (H, W, 3) shape as requested by "bgr8".
+                cprint_and_log(f"⚠️ AVISO: Se recibió imagen de 1 canal '{encoding}' cuando se esperaba color. Convirtiendo a BGR falso.", "yellow", level=logging.WARNING)
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
         return img
     
@@ -106,9 +114,11 @@ class CvBridge:
             elif "grbg" in fmt_str:
                 img = cv2.cvtColor(img, cv2.COLOR_BayerGR2BGR)
             elif "mono" in fmt_str or "8uc1" in fmt_str:
+                cprint_and_log(f"⚠️ AVISO: Imagen comprimida es Mono ('{fmt_str}'). Convirtiendo a BGR.", "yellow", level=logging.WARNING)
                 img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
             else:
                 # Si no reconoce el bayer, al menos lo pasamos a BGR para que no falle
+                cprint_and_log(f"⚠️ AVISO: Formato 1 canal desconocido ('{fmt_str}'). Forzando a BGR.", "yellow", level=logging.WARNING)
                 img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
                 
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -133,12 +143,45 @@ class BagProcessor:
         
         # Validate that we receive the required topics:
         required_keys = {'left', 'right', 'info_l', 'info_r'}
+        
         if not all(key in topics for key in required_keys):
-            raise ValueError(f"El diccionario 'topics' debe contener las claves: {required_keys}")
-            
-        self.topics = topics
+            msg = f"The 'topics' dict must contain the keys: {required_keys}"
+            cprint_and_log(msg, "red", ["bold"], level=logging.CRITICAL)
+            raise ValueError(msg)
+
+        # Resolve topics dynamically right at initialization!
+        self.topics = self._resolve_all_topics(topics)
+        
         self.bridge = CvBridge()
         # self.camera_info = []
+        
+    def _resolve_all_topics(self, base_topics: StereoTopics):
+        """
+        Abre el índice del bag una sola vez para resolver si debemos usar 
+        topics raw o /compressed, actualizando el diccionario internamente.
+        """
+        resolved = base_topics.copy()
+        
+        try:
+            # Abrimos el bag aquí UNA SOLA VEZ para leer todos los topics de golpe
+            with rosbag.Bag(self.bag_path, 'r') as bag:
+                available_topics = bag.get_type_and_topic_info()[1].keys()
+                
+                for key in ['left', 'right']:
+                    base_name = base_topics[key]
+                    compressed_name = f"{base_name}/compressed"
+                    
+                    if base_name in available_topics:
+                        resolved[key] = base_name
+                    elif compressed_name in available_topics:
+                        resolved[key] = compressed_name
+                    else:
+                        cprint_and_log(f"⚠️ AVISO: Ni '{base_name}' ni '{compressed_name}' encontrados en el bag!", "yellow", level=logging.WARNING)
+                        
+        except Exception as e:
+            cprint_and_log(f"❌ Error abriendo bagfile para resolver topics: {e}", "red", level=logging.ERROR)
+            
+        return resolved
         
     def get_calibration(self):
         """
@@ -262,10 +305,8 @@ class BagProcessor:
                         cv_img = self.bridge.imgcompressed_to_cv2(msg, desired_encoding="bgr8")
                     else:
                         cv_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-                    # -----------------------
                 except Exception as e:
-                    # RECOMENDACIÓN: Imprime el error al menos una vez para no ir a ciegas
-                    print(f"❌ Error decodificando frame en {topic}: {e}")
+                    cprint_and_log(f"❌ Error decodificando frame en {topic}: {e}", "red", level=logging.ERROR)
                     continue
 
                 # 1. Meter en el buffer correspondiente
@@ -276,8 +317,6 @@ class BagProcessor:
                     buffer_right[ts] = cv_img
                     cnt_r += 1
 
-                # ... (El resto del código de emparejamiento sigue igual) ...
-                
                 match_ts = None
                 best_diff = tolerance_ns 
                 
@@ -330,7 +369,7 @@ class BagProcessor:
             return
 
         os.makedirs(output_folder, exist_ok=True)
-        print(f"Exportando {topic_key} ({target_topic}) a {output_folder}...")
+        cprint_and_log(f"Exporting {topic_key} ({target_topic}) to {output_folder}...", "cyan")
 
         # Abrimos el bag
         with rosbag.Bag(self.bag_path, 'r') as bag:
@@ -342,7 +381,7 @@ class BagProcessor:
             for _, msg, t in tqdm(bag.read_messages(topics=[target_topic]), total=n_msgs):
                 # 1. Conversión ROS -> OpenCV (BGR)
                 if "compressed" in target_topic:
-                    cprint("compressed","magenta")
+                    cprint_and_log("Processing compressed image...", "magenta", level=logging.DEBUG)
                     cv_image = self.bridge.imgcompressed_to_cv2(msg)
                 else:
                     cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')

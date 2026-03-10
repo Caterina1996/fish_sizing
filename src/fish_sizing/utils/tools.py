@@ -9,12 +9,26 @@ from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import plotly.graph_objects as go
 from termcolor import cprint
+from fish_sizing.utils.config import PROCESSING_PIPELINES
+import yaml
+from pathlib import Path
+import logging
+from termcolor import colored
+import shutil
+from natsort import natsorted
 
-# Stereo camera config
-baseline_m = abs(-179.77544 / 1469.28052)
-left_cam_pos = np.array([0, 0, 0])
-right_cam_pos = np.array([baseline_m, 0, 0])
-cam_dir = np.array([0, 0, 1])
+#  Default tereo camera config
+# baseline_m = abs(-179.77544 / 1469.28052)
+# left_cam_pos = np.array([0, 0, 0])
+# right_cam_pos = np.array([baseline_m, 0, 0])
+# cam_dir = np.array([0, 0, 1])
+
+# Global variable inside the module to keep the logger alive
+run_logger = None
+
+######################################################
+#               I/O TOOLS 
+#######################################################
 
 def load_json_dict(dict_path):
     try:
@@ -27,6 +41,175 @@ def load_json_dict(dict_path):
         return {}
 
     return json_dict
+
+def setup_logger(out_dir):
+    """Configures the logger to write to out_dir/execution_log.txt"""
+    global run_logger
+    run_logger = logging.getLogger("FishSizingLogger")
+    run_logger.setLevel(logging.DEBUG)
+    
+    # Clear previous handlers in case we run in a loop
+    if run_logger.hasHandlers():
+        run_logger.handlers.clear()
+        
+    # Create the file handler (Clean text)
+    log_path = os.path.join(out_dir, "execution_log.txt")
+    file_handler = logging.FileHandler(log_path, mode='a', encoding='utf-8')
+    
+    # Format: [2025-08-21 13:45:00] [ERROR] 💥 Message...
+    formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    file_handler.setFormatter(formatter)
+    
+    run_logger.addHandler(file_handler)
+
+def cprint_and_log(msg, color=None, attrs=None, level=logging.INFO):
+    """Prints in color to the terminal AND saves the clean text to log.txt"""
+    # 1. Terminal (With colors)
+    print(colored(msg, color, attrs=attrs))
+    
+    # 2. File (Clean text)
+    if run_logger:
+        run_logger.log(level, msg)
+
+def save_run_config(out_dir, args, conf_thr, gt, visualize_online, use_wls, image_channels):
+    """
+    Saves the configuration in YAML. 
+    STRICT: Intentionally crashes if vital arguments are missing, 
+    leaving a trace in the log before dying.
+    """
+    # 0. Initialize the logger for this folder
+    setup_logger(out_dir)
+    
+    cprint_and_log("Starting YAML configuration dump...", "cyan", level=logging.INFO)
+
+    # ==========================================
+    # GUARDS (FAIL-FAST) WITH LOGGING
+    # ==========================================
+    if not hasattr(args, 'stereo_config'):
+        msg = "💥 FATAL ERROR: The script did not receive 'stereo_config' in args. Cannot save the log blindly!"
+        cprint_and_log(msg, "red", ["bold"], level=logging.CRITICAL)
+        raise ValueError(msg)
+        
+    if not hasattr(args, 'model_path'):
+        msg = "💥 FATAL ERROR: Missing 'model_path' in args. Which YOLO model are you using?"
+        cprint_and_log(msg, "red", ["bold"], level=logging.CRITICAL)
+        raise ValueError(msg)
+        
+    if not hasattr(args, 'selected_pipeline'):
+        msg = "💥 FATAL ERROR: Missing 'selected_pipeline' in args. I won't know which image processing you saved."
+        cprint_and_log(msg, "red", ["bold"], level=logging.CRITICAL)
+        raise ValueError(msg)
+
+    # 1. Read the original stereo configuration file
+    stereo_cfg = {}
+    if args.stereo_config:
+        if not os.path.exists(args.stereo_config):
+            msg = f"💥 FATAL ERROR: The stereo_config file does not exist at {args.stereo_config}"
+            cprint_and_log(msg, "red", ["bold"], level=logging.CRITICAL)
+            raise FileNotFoundError(msg)
+            
+        with open(args.stereo_config, 'r') as f:
+            stereo_cfg = yaml.safe_load(f)
+            
+    # 2. Gather global configuration
+    globals_cfg = {
+        "MODEL_PATH": args.model_path,
+        "CONF_THR": conf_thr,
+        "gt_ground_truth": gt,
+        "Visualize_online": visualize_online,
+        "use_wls": use_wls,
+        "image_channels": image_channels,
+        "selected_pipeline_name": args.selected_pipeline
+    }
+    
+    # 3. Get the image pipeline
+    img_pipeline_steps = PROCESSING_PIPELINES.get(args.selected_pipeline, [])
+    if not img_pipeline_steps and args.selected_pipeline != "raw":
+        cprint_and_log(f"⚠️ WARNING: The pipeline '{args.selected_pipeline}' does not exist in config.py", "yellow", level=logging.WARNING)
+        
+    pipeline_readable = [{"step": step[0], "params": step[1], "enabled_or_debug": step[2]} for step in img_pipeline_steps]
+
+    # 4. Group everything
+    full_config = {
+        "execution_args": vars(args),
+        "global_variables": globals_cfg,
+        "image_processing_pipeline": pipeline_readable,
+        "stereo_configuration": stereo_cfg
+    }
+    
+    # 5. Save to disk
+    config_path = os.path.join(out_dir, "run_config.yaml")
+    with open(config_path, 'w') as f:
+        yaml.dump(full_config, f, default_flow_style=False, sort_keys=False)
+        
+    cprint_and_log(f"📄 Configuration file saved at: {config_path}", "green", level=logging.INFO)
+    
+def move_inferred_images(out_path):
+    """Moves all *_inferred.* images to an _inferred/ subfolder"""
+    inferred_dir = os.path.join(out_path, "_inferred")
+    os.makedirs(inferred_dir, exist_ok=True)
+    
+    out_p = Path(out_path)
+    moved_count = 0
+    
+    # Buscar en toda la carpeta de salida
+    for file_path in out_p.rglob("*_inferred*.*"):
+        # Ignorar si ya está dentro de la carpeta _inferred
+        if "_inferred" in file_path.parent.parts:
+            continue
+        
+        if file_path.is_file():
+            dest_path = os.path.join(inferred_dir, file_path.name)
+            shutil.move(str(file_path), dest_path)
+            moved_count += 1
+            
+    if moved_count > 0:
+        cprint(f"✅ Moved {moved_count} images to folder _inferred/", "green")
+        
+def stream_stereo_from_folder(folder_path):
+    """
+    Generator that yields stereo pairs from a folder.
+    Matches files containing 'left' with their 'right' counterparts.
+    """
+    valid_exts = ('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff')
+    
+    try:
+        all_files = os.listdir(folder_path)
+    except FileNotFoundError:
+        cprint_and_log(f"❌ Error: Folder not found: {folder_path}", "red", level=logging.ERROR)
+        return
+
+    # Filter only left images (case insensitive)
+    left_files = [f for f in all_files if "left" in f.lower() and f.lower().endswith(valid_exts)]
+    left_files = natsorted(left_files)
+    
+    cprint_and_log(f"📂 Found {len(left_files)} image pairs in {folder_path}", "cyan")
+
+    for f_left in left_files:
+        # Safer replacement: only replace the filename part, not the whole path
+        f_right = f_left.lower().replace("left", "right")
+                
+        path_l = os.path.join(folder_path, f_left)
+        path_r = os.path.join(folder_path, f_right)
+        
+        if not os.path.exists(path_r):
+            cprint_and_log(f"⚠️ Warning: Right pair not found for {f_left}. Skipping.", "yellow", level=logging.WARNING)
+            continue
+            
+        img_l = cv2.imread(path_l)
+        img_r = cv2.imread(path_r)
+        
+        if img_l is None or img_r is None:
+            cprint_and_log(f"❌ Error reading images: {f_left}", "red", level=logging.ERROR)
+            continue
+            
+        # Extract ID without extension
+        frame_id = os.path.splitext(f_left)[0]
+        yield frame_id, img_l, img_r
+
+######################################################
+#               2D MASK UTILS
+#######################################################
 
 def find_mask_length(self, image, object_id,disp_or_mask="disp"):
 
@@ -70,11 +253,13 @@ def find_mask_length(self, image, object_id,disp_or_mask="disp"):
             print("OBJECT ID: ",object_id)
             print("INCOMPLETE CONTOUR: ",contour.shape)
             print("Incomplete contour of size:",len(contour))
-            rospy.logwarn("Incomplete contour of size %d",len(contour[0]))
+            cprint(f"Incomplete contour of size {len(contour[0])}", "red")
 
     return length, ellipse
 
-################# POINTCLOUD UTILS #############################################################3333333
+################################################################
+#               POINTCLOUD UTILS 
+# #############################################################3333333
 
 def create_pointcloud(sub_pointcloud):
     """Create an Open3D PointCloud from a N x 4 array (x, y, z, intensity)."""
@@ -117,7 +302,10 @@ def read_fish_scene_pc(pc_file):
     
     return pointcloud_info,object_ids_array
 
-############# VISUALIZATION TOOLS ###############################################################
+###############################################################
+# VISUALIZATION TOOLS 
+# ###############################################################
+
 def draw_camera(ax, origin, direction, cone_height=0.05, cone_radius=0.02, color='black'):
     n = 20
     theta = np.linspace(0, 2 * np.pi, n)

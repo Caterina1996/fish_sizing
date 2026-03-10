@@ -6,6 +6,52 @@ import os
 import open3d as o3d 
 from termcolor import cprint
 
+
+
+# ==========================================
+# CAMERA CALIBRATION HELPERS
+# ==========================================
+class CameraInfoMsg:
+    """Helper class to simulate a ROS CameraInfo message from a YAML dictionary."""
+    def __init__(self, yaml_data, scale=1.0):
+        # 1. Scale dimensions
+        self.width = int(yaml_data.get('image_width', 0) * scale)
+        self.height = int(yaml_data.get('image_height', 0) * scale)
+        
+        # 2. Scale Intrinsic Matrix (K) [fx, 0, cx, 0, fy, cy, 0, 0, 1]
+        K = yaml_data.get('camera_matrix', {}).get('data', [])
+        self.K = [v * scale if i in [0, 2, 4, 5] else v for i, v in enumerate(K)]
+        
+        # 3. Distortion and Rectification (D and R) are NOT scaled
+        self.D = yaml_data.get('distortion_coefficients', {}).get('data', [])
+        self.R = yaml_data.get('rectification_matrix', {}).get('data', [])
+        
+        # 4. Scale Projection Matrix (P) [fx', 0, cx', Tx, 0, fy', cy', Ty, 0, 0, 1, 0]
+        P = yaml_data.get('projection_matrix', {}).get('data', [])
+        self.P = [v * scale if i in [0, 2, 3, 5, 6, 7] else v for i, v in enumerate(P)]
+        
+        self.distortion_model = yaml_data.get('distortion_model', 'plumb_bob')
+
+def load_camera_info_from_yaml(folder_path, scale=1.0):
+    """Loads left.yaml and right.yaml and converts them to pipeline-compatible objects."""
+    left_yaml_path = os.path.join(folder_path, 'left.yaml')
+    right_yaml_path = os.path.join(folder_path, 'right.yaml')
+    
+    if not os.path.exists(left_yaml_path) or not os.path.exists(right_yaml_path):
+        return {'left': None, 'right': None}
+        
+    with open(left_yaml_path, 'r') as f_l, open(right_yaml_path, 'r') as f_r:
+        left_data = yaml.safe_load(f_l)
+        right_data = yaml.safe_load(f_r)
+        
+    return {
+        'left': CameraInfoMsg(left_data, scale=scale),
+        'right': CameraInfoMsg(right_data, scale=scale)
+    }
+
+# ==========================================
+# STEREO VISION PIPELINE
+# ==========================================
 class StereoVision:
     # Configuración por defecto
     DEFAULT_CONFIG = {
