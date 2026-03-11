@@ -135,7 +135,10 @@ class StereoVision:
         self.block_size = s_cfg['block_size']
         
         mode_map = {"SGBM": 0, "HH": 1, "SGBM_3WAY": 2}
-        mode = mode_map.get(s_cfg.get('mode', 'SGBM_3WAY'), 2)
+        # mode = mode_map.get(s_cfg.get('mode', 'SGBM_3WAY'), 2)
+        
+        mode_str = s_cfg['mode']
+        mode = mode_map[mode_str]
 
         self.left_matcher = cv2.StereoSGBM_create(
             minDisparity=s_cfg['min_disparity'],

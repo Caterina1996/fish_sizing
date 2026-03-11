@@ -77,4 +77,6 @@ def transform_path2docker(path: str,use_docker=USE_DOCKER) -> str:
         if host_path in path:
             new_path = path.replace(host_path, docker_path)
             cprint(f"🔄 Path mapped: {path} \n   -> {new_path}", "yellow")
-            return new_path    
+            return new_path  
+    
+    return path  

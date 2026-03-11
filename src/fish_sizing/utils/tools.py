@@ -75,9 +75,11 @@ def save_run_config( args):
     """
     Consolidates ALL configuration by reading the source YAML files directly.
     Explicitly fails if configuration files are missing.
+    
     """
     setup_logger(args.out_path)
     cprint_and_log("Generating consolidated experiment log...", "cyan", level=logging.INFO)
+    save_dir = args.out_path
 
     # 1. Read Pipeline YAML (Contains model_path, decimation, AND quality filters)
     pipeline_content = {}
