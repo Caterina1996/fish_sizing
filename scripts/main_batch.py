@@ -92,6 +92,7 @@ def run_batch():
             cprint_and_log(f"✅ FINALIZADO con éxito: {bag_name}\n", "green")
         except subprocess.CalledProcessError:
             cprint_and_log(f"❌ ERROR: El pipeline falló para {bag_name}. Revisar logs de la carpeta.\n", "red", level=logging.ERROR)
+            break
         except KeyboardInterrupt:
             cprint_and_log("\n🛑 Proceso por lotes detenido por el usuario.", "yellow", attrs=["bold"])
             break

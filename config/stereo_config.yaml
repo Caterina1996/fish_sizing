@@ -8,7 +8,7 @@ stereo:
   uniqueness_ratio: 25
   speckle_window_size: 100
   speckle_range: 2 #  Si usas SGBM, a veces hay que multiplicarlo por 16.
-  mode: "MODE_HH"
+  mode: "HH"     #    mode_map = {"SGBM": 0, "HH": 1, "SGBM_3WAY": 2}
   max_depth_meters: 3.2
 
 wls:
