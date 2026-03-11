@@ -71,78 +71,61 @@ def cprint_and_log(msg, color=None, attrs=None, level=logging.INFO):
     if run_logger:
         run_logger.log(level, msg)
 
-def save_run_config(out_dir, args, conf_thr, gt, visualize_online, use_wls, image_channels):
+def save_run_config( args):
     """
-    Saves the configuration in YAML. 
-    STRICT: Intentionally crashes if vital arguments are missing, 
-    leaving a trace in the log before dying.
+    Consolidates ALL configuration by reading the source YAML files directly.
+    Explicitly fails if configuration files are missing.
     """
-    # 0. Initialize the logger for this folder
-    setup_logger(out_dir)
-    
-    cprint_and_log("Starting YAML configuration dump...", "cyan", level=logging.INFO)
+    setup_logger(args.out_path)
+    cprint_and_log("Generating consolidated experiment log...", "cyan", level=logging.INFO)
 
-    # ==========================================
-    # GUARDS (FAIL-FAST) WITH LOGGING
-    # ==========================================
-    if not hasattr(args, 'stereo_config'):
-        msg = "💥 FATAL ERROR: The script did not receive 'stereo_config' in args. Cannot save the log blindly!"
+    # 1. Read Pipeline YAML (Contains model_path, decimation, AND quality filters)
+    pipeline_content = {}
+    pipeline_path = getattr(args, 'pipeline_config_path', None)
+    if pipeline_path and os.path.exists(pipeline_path):
+        with open(pipeline_path, 'r') as f:
+            pipeline_content = yaml.safe_load(f)
+    else:
+        msg = f"💥 FATAL ERROR: Pipeline config missing at {pipeline_path}"
         cprint_and_log(msg, "red", ["bold"], level=logging.CRITICAL)
-        raise ValueError(msg)
-        
-    if not hasattr(args, 'model_path'):
-        msg = "💥 FATAL ERROR: Missing 'model_path' in args. Which YOLO model are you using?"
-        cprint_and_log(msg, "red", ["bold"], level=logging.CRITICAL)
-        raise ValueError(msg)
-        
-    if not hasattr(args, 'selected_pipeline'):
-        msg = "💥 FATAL ERROR: Missing 'selected_pipeline' in args. I won't know which image processing you saved."
-        cprint_and_log(msg, "red", ["bold"], level=logging.CRITICAL)
-        raise ValueError(msg)
+        raise FileNotFoundError(msg)
 
-    # 1. Read the original stereo configuration file
-    stereo_cfg = {}
-    if args.stereo_config:
-        if not os.path.exists(args.stereo_config):
-            msg = f"💥 FATAL ERROR: The stereo_config file does not exist at {args.stereo_config}"
-            cprint_and_log(msg, "red", ["bold"], level=logging.CRITICAL)
-            raise FileNotFoundError(msg)
-            
-        with open(args.stereo_config, 'r') as f:
-            stereo_cfg = yaml.safe_load(f)
-            
-    # 2. Gather global configuration
-    globals_cfg = {
-        "MODEL_PATH": args.model_path,
-        "CONF_THR": conf_thr,
-        "gt_ground_truth": gt,
-        "Visualize_online": visualize_online,
-        "use_wls": use_wls,
-        "image_channels": image_channels,
-        "selected_pipeline_name": args.selected_pipeline
-    }
-    
-    # 3. Get the image pipeline
-    img_pipeline_steps = PROCESSING_PIPELINES.get(args.selected_pipeline, [])
-    if not img_pipeline_steps and args.selected_pipeline != "raw":
-        cprint_and_log(f"⚠️ WARNING: The pipeline '{args.selected_pipeline}' does not exist in config.py", "yellow", level=logging.WARNING)
-        
-    pipeline_readable = [{"step": step[0], "params": step[1], "enabled_or_debug": step[2]} for step in img_pipeline_steps]
+    # 2. Read Stereo YAML (Contains SGBM and WLS parameters)
+    stereo_content = {}
+    stereo_path = getattr(args, 'stereo_config', None)
+    if stereo_path and os.path.exists(stereo_path):
+        with open(stereo_path, 'r') as f:
+            stereo_content = yaml.safe_load(f)
+    else:
+        msg = f"💥 FATAL ERROR: Stereo config missing at {stereo_path}"
+        cprint_and_log(msg, "red", ["bold"], level=logging.CRITICAL)
+        raise FileNotFoundError(msg)
 
-    # 4. Group everything
+    # 3. Get the specific Image Processing steps from config.py
+    selected_name = pipeline_content.get('pipeline_name', 'basic')
+    img_steps = PROCESSING_PIPELINES.get(selected_name, [])
+    pipeline_steps_readable = [
+        {"step": s[0], "params": s[1], "debug": s[2]} for s in img_steps
+    ]
+
+    # 4. Consolidate everything into one master dictionary
     full_config = {
-        "execution_args": vars(args),
-        "global_variables": globals_cfg,
-        "image_processing_pipeline": pipeline_readable,
-        "stereo_configuration": stereo_cfg
-    }
-    
-    # 5. Save to disk
-    config_path = os.path.join(out_dir, "run_config.yaml")
+            "metadata": {
+                "execution_time": str(np.datetime64('now')),
+                "docker_output_folder": save_dir
+            },
+            "execution_stats": getattr(args, 'execution_stats', {}), # <--- AÑADE ESTO
+            "cli_arguments": vars(args),
+            "pipeline_params": pipeline_content,
+            "stereo_params": stereo_content,
+            "applied_image_ops": pipeline_steps_readable 
+        }
+    # 5. Save the master log
+    config_path = os.path.join(args.out_path, "run_config.yaml")
     with open(config_path, 'w') as f:
         yaml.dump(full_config, f, default_flow_style=False, sort_keys=False)
         
-    cprint_and_log(f"📄 Configuration file saved at: {config_path}", "green", level=logging.INFO)
+    cprint_and_log(f"📄 Master configuration log saved: {config_path}", "green", level=logging.INFO)
     
 def move_inferred_images(out_path):
     """Moves all *_inferred.* images to an _inferred/ subfolder"""

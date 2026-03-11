@@ -58,11 +58,12 @@ USE_DOCKER = True
 PATH_MAPPINGS = {
     "/home/slimbook/bagfiles": "/home/rosuser/dataset/bagfiles",
     "/home/slimbook/fish_sizing/out": "/home/rosuser/repo/out",
-    "/home/slimbook/models": "/home/rosuser/dataset/models/",
-    "/home/slimbook/fish_sizing/config": "/home/rosuser/repo/config/",
+    "/home/slimbook/models": "/home/rosuser/dataset/models",
+    "/home/slimbook/fish_sizing/config": "/home/rosuser/repo/config",
     "/media/slimbook/easystore": "/home/rosuser/easystore",
     "/media/slimbook/easystore1": "/home/rosuser/easystore1",
-    "/media/slimbook/easystore2": "/home/rosuser/easystore2"
+    "/media/slimbook/easystore2": "/home/rosuser/easystore2",
+    "/home/slimbook/results_fish_sizing":"/home/rosuser/dataset/results_fish_sizing" 
 }
 
 

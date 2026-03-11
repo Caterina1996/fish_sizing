@@ -7,6 +7,7 @@ class Fish2D:
     def __init__(self, frame_id, color_id, fish_class,model_classes_dict,mask, bbox,
                  class_colours_dict, does_overlap , overlapping_ids,
                  model_used="unknown_yolo",track_id=None, 
+                 aspect_ratio=-1,
                  in_image_borders=False,       
                  debug_path=""):
         
@@ -27,6 +28,7 @@ class Fish2D:
         self.model_classes_dict = model_classes_dict
         self.class_colours_dict = class_colours_dict
         self.is_3d_complete = -1
+        self.aspect_ratio = aspect_ratio
         
         self.debug_mode = True
         self.debug_path = debug_path

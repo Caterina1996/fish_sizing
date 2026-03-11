@@ -13,8 +13,17 @@ conf_thr: 0.5             # Umbral de confianza para detección
 
 # --- Parámetros de Estéreo y Medición ---
 use_wls: True             # Aplicar filtro WLS a la disparidad
-gt: True                  # Si se dispone de Ground Truth o metadatos de fauna
+gt_ground_truth: 33.5
 visualize: False          # Mostrar ventanas de OpenCV durante el proceso
 
 # --- Otros ---
 save_debug: False          # Guardar imágenes de diagnóstico (*_debug.jpg)
+
+# --- Filtros de Calidad y Solapamiento ---
+ignore_borders: False        # TRUE para medir aunque toque el borde
+ignore_completeness: True   # TRUE para medir aunque la segmentación sea parcial
+ignore_overlap: True        # TRUE para medir aunque haya solapamiento detectado
+overlap_margin: 0.05        # Margen en metros para el chequeo de profundidad Z
+
+ignore_aspect_ratio: True   # TRUE para medir aunque el pez esté de cara/curvado
+aspect_ratio_thr: 2.0       # (Solo se aplica si ignore_aspect_ratio fuera false)

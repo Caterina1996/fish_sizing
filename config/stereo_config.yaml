@@ -1,6 +1,6 @@
 stereo:
   min_disparity: 20
-  num_disparities: 112  # Multiplo de 16
+  num_disparities: 96  # Multiplo de 16
   block_size: 7         # 3-7 suele ir bien 5?
   p1_factor: 8
   p2_factor: 24

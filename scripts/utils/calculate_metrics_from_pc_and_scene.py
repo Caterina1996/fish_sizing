@@ -155,7 +155,7 @@ def main():
             continue
 
         disp_npy_path = os.path.join(frame_dir, f"{frame_name}_disparity.npy")
-        disp_png_path = os.path.join(frame_dir, f"{frame_name}_disparity.png")
+        disp_png_path = os.path.join(frame_dir, f"{frame_name}_disparity.jpg")
         
         if os.path.exists(disp_npy_path):
             frame_scene.disparity_map = np.load(disp_npy_path)

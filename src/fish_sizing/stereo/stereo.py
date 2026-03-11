@@ -112,6 +112,7 @@ class StereoVision:
         # 3. Cargar Configuración YAML
         self.config = self.DEFAULT_CONFIG.copy()
         if config_path and os.path.exists(config_path):
+          
             with open(config_path, 'r') as f:
                 loaded_cfg = yaml.safe_load(f)
                 if loaded_cfg:
@@ -191,7 +192,7 @@ class StereoVision:
             full_map[y1:y2, :] = disp_float
             
             if debug or (debug_path is not None):
-                filename = f"{frame_id}_disparity.png"
+                filename = f"{frame_id}_disparity.jpg"
                 save_p = os.path.join(debug_path, filename) if debug_path else None
                 self.visualize_disparity(full_map, strips, show=debug, save_path=save_p)
             
