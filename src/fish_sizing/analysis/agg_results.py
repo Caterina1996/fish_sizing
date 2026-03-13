@@ -34,9 +34,9 @@ def aggregate_csvs(base_dir, output_file, target_csv_name, required_parent=None)
             file_date = datetime.fromtimestamp(mtime).date()
             
             # Si el archivo es de ayer (o más antiguo), nos lo saltamos
-            if file_date < today_date:
-                print(f"⏭️ Saltando (Viejo - {file_date}): {filepath.parent.parent.name}")
-                continue
+            # if file_date < today_date:
+            #     print(f"⏭️ Saltando (Viejo - {file_date}): {filepath.parent.parent.name}")
+            #     continue
             # -------------------------------------------
 
             try:
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--base_dir",
         type=str,
-        default="//media/slimbook/easystore/results_fish_sizing/seleccio_article/lanty1/2025_08_21/1_peix/",
+        default="/home/slimbook/results_fish_sizing/2024_11_28/multiples_peixos/",
         help="Carpeta raíz donde buscar"
     )
     

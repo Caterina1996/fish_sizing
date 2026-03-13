@@ -10,8 +10,8 @@ from fish_sizing.utils.tools import cprint_and_log, setup_logger
 from fish_sizing.utils.config import TOPICS_DICT, PROCESSING_PIPELINES, transform_path2docker
 
 # Configuración del lote
-PARENT_BAGS_DIR_0 = "/home/slimbook/bagfiles/peixos_morts_piscina_v3/2024_11_28/multiples_peixos/" 
-OUTPUT_BASE_DIR_0 = "/home/slimbook/results_fish_sizing/2024_11_28/multiples_peixos/"      
+PARENT_BAGS_DIR_0 = "//media/slimbook/easystore1/bagfiles/seleccio_article/Piscina/2024_11_28/multiples_peixos/pending/" 
+OUTPUT_BASE_DIR_0 = "/media/slimbook/easystore1/results_fish_sizing/seleccio_article/2024_11_28/multiples_peixos/resultats_nous/"      
 STEREO_CFG      = "/home/slimbook/fish_sizing/config/stereo_config.yaml"
 PIPE_PARAMS     = "/home/slimbook/fish_sizing/config/pipeline_params.yaml"
 

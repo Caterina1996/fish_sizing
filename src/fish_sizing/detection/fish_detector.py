@@ -188,12 +188,7 @@ class FishDetector:
                     if key==fish_cls:
                         masked_dict[fish_cls] = masked_dict[fish_cls]+(mask_bw*self.class_colours[fish_cls])
                 
-                # Aspect Ratio (Perfil vs De Cara)
-                x1, y1, x2, y2 = bbox
-                width = abs(x2 - x1)
-                height = abs(y2 - y1)
-                aspect_ratio = max(width, height) / min(width, height) if min(width, height) > 0 else 0
-                        
+                # Aspect ratio is generated in the constructor of fish2d                        
                 current_fish = Fish2D(
                     frame_id = frame_id,
                     color_id = current_color_id,
@@ -207,7 +202,6 @@ class FishDetector:
                     in_image_borders = in_image_borders,
                     does_overlap = current_does_overlap,
                     overlapping_ids = current_overlapping_ids,
-                    aspect_ratio = aspect_ratio,
                     debug_path = os.path.join(debug_path,"debug") if debug_path else ""
                 )
                 

@@ -9,31 +9,10 @@ import cv2
 from termcolor import cprint, colored
 from natsort import natsorted
 import sys
+from pathlib import Path
 
 from fish_sizing.detection.fish2D import Fish2D, FrameScene 
-
-PATH_MAPPINGS = {
-    "/home/slimbook/bagfiles": "/home/rosuser/dataset/bagfiles",
-    "/home/slimbook/fish_sizing/out": "/home/rosuser/repo/out",
-    "/home/slimbook/models": "/home/rosuser/dataset/models/",
-    "/home/slimbook/fish_sizing/config" :"/home/rosuser/repo/config/",
-    "/media/slimbook/easystore": "/home/rosuser/easystore",
-    "/media/slimbook/easystore2": "/home/rosuser/easystore2",
-    "/media/slimbook/easystore1": "/home/rosuser/easystore1"
-}
-
-USE_DOCKER = True
-
-def transform_path2docker(path: str) -> str:
-    """Convierte rutas de la máquina host a rutas dentro del contenedor Docker."""
-    if not USE_DOCKER or path is None:
-        return path
-    for host_path, docker_path in PATH_MAPPINGS.items():
-        if host_path in path:
-            new_path = path.replace(host_path, docker_path)
-            cprint(f"🔄 Path mapped: {path} \n   -> {new_path}", "yellow")
-            return new_path 
-    return path
+from fish_sizing.utils.config import transform_path2docker
 
 
 def get_oriented_aspect_ratio(mask):
@@ -71,18 +50,12 @@ def process_single_folder(folder_path, results_dir):
         cprint(f"  ⏭️ Saltando '{folder_name}': No se encontró el CSV en {results_dir}/", "yellow")
         return False
 
-    # 2. Búsqueda inteligente de PKLs (Busca en varios niveles cercanos al CSV)
-    base_results_path = os.path.dirname(csv_path)       # ej: .../results_article_basic/results
-    parent_experiment = os.path.dirname(base_results_path) # ej: .../results_article_basic
+    # 2. Búsqueda inteligente de PKLs (Usando rglob para mirar en todas las subcarpetas frame_X)
+    pkl_files = list(Path(folder_path).rglob("*.pkl"))
     
-    pkl_files = natsorted(glob.glob(os.path.join(parent_experiment, "*.pkl")))
     if not pkl_files:
-        pkl_files = natsorted(glob.glob(os.path.join(base_results_path, "*.pkl")))
-        if not pkl_files:
-            pkl_files = natsorted(glob.glob(os.path.join(folder_path, "*.pkl")))
-            if not pkl_files:
-                cprint(f"  ⏭️ Saltando '{folder_name}': No hay archivos .pkl cerca de {results_dir}", "yellow")
-                return False
+        cprint(f"  ⏭️ Saltando '{folder_name}': No hay archivos .pkl en {folder_path}", "yellow")
+        return False
 
     cprint(f"\n🐟 Procesando: {folder_name} ({len(pkl_files)} frames)", "cyan", attrs=["bold"])
     
@@ -103,15 +76,16 @@ def process_single_folder(folder_path, results_dir):
                 
             new_ar = get_oriented_aspect_ratio(fish.mask)
             
-            # Buscar en el dataframe y actualizar
+            # Buscar en el dataframe y actualizar (asegurando el match correcto)
             mask_df = (df_raw['frame_id'].astype(str) == frame_id_str) & (df_raw['track_id'].astype(str) == str(fish.track_id))
+            
             if mask_df.any():
                 df_raw.loc[mask_df, 'aspect_ratio'] = new_ar
                 cambios += 1
 
     cprint(f"  ✅ {cambios} Aspect Ratios re-calculados usando OBB.", "green")
 
-    # 5. Check fish_3d_ok
+    # 5. Check fish_3d_ok (Opcional, pero lo mantenemos por si lo usas)
     if 'fish_3d_ok' in df_raw.columns:
         df_raw['fish_3d_ok'] = (
             (df_raw['aspect_ratio'] >= 1.8) & 
@@ -121,7 +95,7 @@ def process_single_folder(folder_path, results_dir):
         )
 
     # 6. GUARDAR DIRECTAMENTE EL CSV MODIFICADO
-    # Lo guarda en la misma carpeta padre del 'results', pero llamado 'corrected_results'
+    parent_experiment = os.path.dirname(os.path.dirname(csv_path)) 
     out_dir = os.path.join(parent_experiment, "corrected_results")
     os.makedirs(out_dir, exist_ok=True) 
     
@@ -134,7 +108,7 @@ def process_single_folder(folder_path, results_dir):
 
 def main():
     parser = argparse.ArgumentParser(description="Wrapper para corregir el Aspect Ratio en múltiples carpetas de un dataset.")
-    parser.add_argument("--parent_dir", "-p", type=str, default="/media/slimbook/easystore1/results_fish_sizing/seleccio_article/lanty1/2025_08_21/1_peix/", help="Carpeta padre que contiene todas las subcarpetas")
+    parser.add_argument("--parent_dir", "-p", type=str, default="/media/slimbook/easystore1/results_fish_sizing/seleccio_article/2024_11_28/multiples_peixos/resultats_nous/", help="Carpeta padre que contiene todas las subcarpetas")
     parser.add_argument("--results_dir", "-r", type=str, default="results", help="Subcarpeta donde se encuentra el CSV (ej: 'results' o 'results_article_basic_nou/results')")
     
     args = parser.parse_args()

@@ -7,7 +7,6 @@ class Fish2D:
     def __init__(self, frame_id, color_id, fish_class,model_classes_dict,mask, bbox,
                  class_colours_dict, does_overlap , overlapping_ids,
                  model_used="unknown_yolo",track_id=None, 
-                 aspect_ratio=-1,
                  in_image_borders=False,       
                  debug_path=""):
         
@@ -28,10 +27,35 @@ class Fish2D:
         self.model_classes_dict = model_classes_dict
         self.class_colours_dict = class_colours_dict
         self.is_3d_complete = -1
-        self.aspect_ratio = aspect_ratio
+        self.aspect_ratio = self.get_oriented_aspect_ratio()
         
         self.debug_mode = True
         self.debug_path = debug_path
+        
+    
+    def get_oriented_aspect_ratio(self):
+        """
+        Calcula el Aspect Ratio real basándose en un Bounding Box Rotado (OBB)
+        ajustado al contorno de la máscara del pez.
+        """
+        if self.mask is None or np.sum(self.mask) == 0:
+            return 0.0
+            
+        mask_uint8 = (self.mask > 0).astype(np.uint8) * 255
+        contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if not contours:
+            return 0.0
+            
+        largest_contour = max(contours, key=cv2.contourArea)
+        rect = cv2.minAreaRect(largest_contour)
+        
+        # rect devuelve: ((center_x, center_y), (width, height), angle)
+        width, height = rect[1]
+        
+        if min(width, height) > 0:
+            return max(width, height) / min(width, height)
+        return 0.0
 
     
     @staticmethod
