@@ -114,34 +114,113 @@ def aggregate_results_from_root(root_dir, day_code, output_csv_path=None, result
     cprint(f"\n📊 TOTAL AGREGADO: {len(agg_df)} líneas de datos.", "magenta", attrs=["bold"])
     return agg_df
 
+
+######################################################################33
+#               READ  GT
+#####################################################################333
+
+def inject_ground_truth(df_raw, gt_dict, measures_dict, drop_unlabeled=False):
+    """
+    Inyecta el Ground Truth en el DataFrame, recalcula el error absoluto para todos
+    (incluidos los -100) y marca los errores como 'not_a_fish'.
+    
+    Parámetros:
+    - drop_unlabeled: Si es True, elimina del DataFrame los peces que no 
+      estén en tu diccionario de anotaciones.
+    """
+    df = df_raw.copy()
+    
+    # 0. Limpiamos cualquier rastro de GT anterior antes de empezar
+    cols_to_drop = ["gt", "abs_error_cm", "especie_gt", "failure_reason"]
+    df.drop(columns=[c for c in cols_to_drop if c in df.columns], inplace=True)
+    
+    # 1. Convertir los diccionarios a un DataFrame plano
+    records = []
+    for day, videos in gt_dict.items():
+        for video_name, tracks in videos.items():
+            for track_id, label in tracks.items():
+                records.append({
+                    "video_day": day,
+                    "video_name": video_name,
+                    "track_id": track_id,
+                    "especie_gt": label,
+                    "gt": measures_dict.get(label, np.nan) # Lo pasamos a 'gt' directamente
+                })
+                
+    df_gt = pd.DataFrame(records)
+            
+        
+    # 2. Cruzar los datos con tu DataFrame original
+    df = df.merge(df_gt, on=["video_day", "video_name", "track_id"], how="left")
+    
+    # 3. Marcar los que son basura (-100) en failure_reason
+    if "failure_reason" not in df.columns:
+        df["failure_reason"] = np.nan
+        
+    mask_not_fish = df["failure_reason"] == "error"
+    df.loc[mask_not_fish, "failure_reason"] = "not_a_fish"
+    
+    # 4. Calcular error absoluto sin excepciones (los -100 tendrán un error enorme)
+    df["abs_error_cm"] = abs((df["filtered_length"] * 100) - df["gt"])
+    
+    # 5. Filtrar los NO etiquetados (Opcional)
+    # df["gt"].notna() mantendrá los -100, pero borrará los peces que no pusiste en tu diccionario
+    if drop_unlabeled:
+        df = df[df["gt"].notna()].copy()
+        
+    # 6. Crear el ID único e imprimir resumen
+    # df['unique_track'] = df['video_day'].astype(str) + "_" + df['source_folder'].astype(str) + "-" + df['track_id'].astype(str)
+    
+    df['unique_track'] = df['video_day'].astype(str) + "/" + df['video_name'].astype(str) + "/" + df['track_id'].astype(str)
+    # df_raw_agg['unique_track'] = df_raw_agg['video_day'].astype(str) + "/" + df_raw_agg['video_name'].astype(str) +"/"+ df_raw_agg['track_id'].astype(str)
+    
+    video_codes = df["source_folder"].unique()
+    cprint(f"✅ Ground Truth inyectado. Vídeos únicos: {len(video_codes)} | Total de anotaciones cruzadas: {len(df)}", "green")
+    
+    return df
+
+
 # =====================================================================
 # ⚡ CLASIFICADOR VECTORIZADO DINÁMICO (Reemplaza a classify_failure)
 # =====================================================================
 
 def assign_failure_reasons(df, aspect_ratio_thr=3.0, angle_thr=20.0):
+    
     """
     Calcula la causa de fallo de manera rápida (vectorizada).
     Evalúa los umbrales estrictos en vivo, sobrescribiendo el estado original.
     """
-    c_borders = df["in_image_borders"] == True
-    c_overlap = df["does_overlap"] == True
-    c_ar      = df["aspect_ratio"] < aspect_ratio_thr
-    c_3d      = df["is_3D_complete"] == False
-    
+  
+    df = df.copy()
+
+    c_not_fish = df["gt"] == -100
+    c_borders  = df["in_image_borders"]
+    c_overlap  = df["does_overlap"]
+    c_ar       = df["aspect_ratio"] < aspect_ratio_thr
+    c_3d       = df["is_3D_complete"] == False
+
     if "elevation_deg" in df.columns and angle_thr is not None:
         c_angle = df["elevation_deg"].abs() > angle_thr
     else:
         c_angle = pd.Series(False, index=df.index)
-        
-    c_measured = df["filtered_length"] > 0
-    
-    # El orden determina la prioridad (el primer True se queda con la etiqueta)
-    conds = [c_borders, c_overlap, c_ar, c_angle, c_3d, c_measured]
-    choices = ["borders", "overlap", "aspect_ratio_fail", "angle_fail", "incomplete_3D", "measured"]
-    
-    df["failure_reason"] = np.select(conds, choices, default="other")
-    return df
 
+    c_measured = df["filtered_length"] > 0
+
+    conds = [c_not_fish, c_borders, c_overlap, c_ar, c_angle, c_3d, c_measured]
+
+    choices = [
+        "not_a_fish",
+        "borders",
+        "overlap",
+        "aspect_ratio_fail",
+        "angle_fail",
+        "incomplete_3D",
+        "measured"
+    ]
+
+    df["failure_reason"] = np.select(conds, choices, default="other")
+
+    return df
 
 # =====================================================================
 # GRÁFICOS Y ANÁLISIS
@@ -166,7 +245,8 @@ def plot_tracks_failure_distribution(df_raw_agg_input, aspect_ratio_thr=3.0, ang
 
     track_failures = df_raw_agg.groupby("unique_track").apply(track_failure_from_frames).reset_index()
     track_failures.columns = ["unique_track", "track_failure_reason"]
-    track_failures["source_folder"] = track_failures["unique_track"].apply(lambda x: "_".join(x.split("_")[:-1]))
+    track_failures["source_folder"] = track_failures["unique_track"].apply(lambda x: x.split("/")[1])
+    # track_failures["source_folder"] = track_failures["unique_track"].apply(lambda x: "_".join(x.split("_")[:-1]))
 
     track_stacked_df = track_failures.groupby(["source_folder", "track_failure_reason"]).size().unstack(fill_value=0)
     for col in failure_priority:
