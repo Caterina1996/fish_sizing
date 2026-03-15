@@ -144,40 +144,63 @@ def inject_ground_truth(df_raw, gt_dict, measures_dict, drop_unlabeled=False):
                     "video_name": video_name,
                     "track_id": track_id,
                     "especie_gt": label,
-                    "gt": measures_dict.get(label, np.nan) # Lo pasamos a 'gt' directamente
+                    "gt": measures_dict.get(label, np.nan) 
                 })
                 
     df_gt = pd.DataFrame(records)
             
-        
     # 2. Cruzar los datos con tu DataFrame original
     df = df.merge(df_gt, on=["video_day", "video_name", "track_id"], how="left")
     
-    # 3. Marcar los que son basura (-100) en failure_reason
+    # 3. Marcar los que son basura ("error" o -100) en failure_reason
     if "failure_reason" not in df.columns:
         df["failure_reason"] = np.nan
         
-    mask_not_fish = df["failure_reason"] == "error"
+    # Buscamos la palabra "error" en la columna de la etiqueta, o el valor -100
+    mask_not_fish = (df["especie_gt"] == "error") | (df["gt"] == -100)
     df.loc[mask_not_fish, "failure_reason"] = "not_a_fish"
     
-    # 4. Calcular error absoluto sin excepciones (los -100 tendrán un error enorme)
+    # 4. Calcular error absoluto 
     df["abs_error_cm"] = abs((df["filtered_length"] * 100) - df["gt"])
     
-    # 5. Filtrar los NO etiquetados (Opcional)
-    # df["gt"].notna() mantendrá los -100, pero borrará los peces que no pusiste en tu diccionario
+    # 5. Crear el ID único ANTES de filtrar para poder contar los tracks
+    df['unique_track'] = df['video_day'].astype(str) + "/" + df['video_name'].astype(str) + "/" + df['track_id'].astype(str)
+    
+    # 6. Filtrar los NO etiquetados (Opcional)
     if drop_unlabeled:
         df = df[df["gt"].notna()].copy()
-        
-    # 6. Crear el ID único e imprimir resumen
-    # df['unique_track'] = df['video_day'].astype(str) + "_" + df['source_folder'].astype(str) + "-" + df['track_id'].astype(str)
+        cprint(f"   🗑️ Se han eliminado los tracks sin etiquetar (drop_unlabeled=True).", "magenta")
     
-    df['unique_track'] = df['video_day'].astype(str) + "/" + df['video_name'].astype(str) + "/" + df['track_id'].astype(str)
-    # df_raw_agg['unique_track'] = df_raw_agg['video_day'].astype(str) + "/" + df_raw_agg['video_name'].astype(str) +"/"+ df_raw_agg['track_id'].astype(str)
+    # 1. Sacamos los nombres exactos de los tracks huérfanos usando .unique()
+    lista_tracks_sin_gt = df[df['gt'].isna()]['unique_track'].unique().tolist()
+    
+    # 2. Sacamos la cantidad (la longitud de esa lista)
+    num_tracks_sin_gt = len(lista_tracks_sin_gt)
+    
+    # 3. Contamos los que SÍ tienen GT
+    num_tracks_con_gt = df[df['gt'].notna()]['unique_track'].nunique()
     
     video_codes = df["source_folder"].unique()
-    cprint(f"✅ Ground Truth inyectado. Vídeos únicos: {len(video_codes)} | Total de anotaciones cruzadas: {len(df)}", "green")
     
-    return df
+    cprint(f"✅ Ground Truth inyectado. Vídeos únicos: {len(video_codes)}", "green")
+    cprint(f"   🐟 Tracks CON Ground Truth: {num_tracks_con_gt}", "cyan")
+    
+    if num_tracks_sin_gt > 0:
+        cprint(f"   ⚠️ Tracks SIN Ground Truth (NaN): {num_tracks_sin_gt}", "yellow")
+        # Ahora sí, si haces un print aquí, verás la lista de nombres
+        # print(lista_tracks_sin_gt) 
+    else:
+        cprint(f"   🎉 ¡Todos los tracks tienen su Ground Truth!", "green", attrs=["bold"])
+
+    # 6. Filtrar los NO etiquetados (Opcional)
+    if drop_unlabeled:
+        df = df[df["gt"].notna()].copy()
+        cprint(f"   🗑️ Se han eliminado los tracks sin etiquetar (drop_unlabeled=True).", "magenta")
+    
+    # Devolvemos el DataFrame y la LISTA REAL de tracks sin etiquetar
+    return df, lista_tracks_sin_gt
+
+    
 
 
 # =====================================================================
