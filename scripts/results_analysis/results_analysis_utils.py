@@ -15,6 +15,71 @@ warnings.filterwarnings('ignore')
 # =====================================================================
 # FUNCIONES DE AGREGACIÓN
 # =====================================================================
+def aggregate_results_from_root_new(root_dir, day_code, output_csv_path=None, results_foldername="corrected_results"):
+    """
+    Recursively searches ONLY for '*raw.csv' files. 
+    Smartly extracts the video name directly from the filename, making it immune to folder structure changes.
+    """
+    root_dir = Path(root_dir)
+    pattern = f"**/{results_foldername}/*raw.csv"
+    cprint(f"🔍 Searching for RAW data in: {root_dir}", "cyan")
+
+    result_files = list(root_dir.rglob(pattern))
+
+    if not result_files:
+        cprint(f"❌ No '*raw.csv' files found in '{results_foldername}' folders.", "red")
+        return pd.DataFrame()
+
+    cprint(f"📂 Found {len(result_files)} raw result files.", "green")
+    all_dfs = []
+
+    for filepath in result_files:
+        try:
+
+            filename = filepath.name  # e.g., "2024_11_28_13_14_42_0_raw.csv"
+            base_name = filename.replace("_raw.csv", "") # e.g., "2024_11_28_13_14_42_0"
+            
+            # Strip the day_code from the beginning to get the pure video_name
+            if base_name.startswith(day_code):
+                # e.g., "13_14_42_0" (lstrip removes the leftover underscore)
+                video_name = base_name[len(day_code):].lstrip("_") 
+            else:
+                video_name = base_name
+            
+            df = pd.read_csv(filepath)
+            
+            if not df.empty:
+                df['video_day'] = day_code
+                df['video_name'] = video_name
+                # We keep source_folder identical to video_name so your plotting functions don't break!
+                df['source_folder'] = video_name 
+                all_dfs.append(df)
+            else:
+                cprint(f"   ⚠️ Empty: {video_name}", "yellow")
+                
+        except Exception as e:
+            cprint(f"   ❌ Error reading {filepath}: {e}", "red")
+
+    if not all_dfs:
+        return pd.DataFrame()
+
+    agg_df = pd.concat(all_dfs, ignore_index=True)
+
+    # Reorder columns
+    context_cols = ["video_day", "source_folder", "video_name"]
+    other_cols = [c for c in agg_df.columns if c not in context_cols]
+    agg_df = agg_df[context_cols + other_cols]
+
+    if output_csv_path is None: 
+        output_csv_path = root_dir
+        
+    output_path = Path(output_csv_path) / f"{day_code}_raw_aggregated.csv"
+    os.makedirs(output_path.parent, exist_ok=True)
+    agg_df.to_csv(output_path, index=False)
+
+    cprint(f"\n📊 TOTAL AGGREGATED: {len(agg_df)} data rows.", "magenta", attrs=["bold"])
+    return agg_df
+
 
 def aggregate_all_results(output_base_dir, day_code=""):
     """
@@ -438,6 +503,7 @@ def smart_aggregator(track_df, length_col='filtered_length',num_tracks_threshold
         'abs_error_cm': abs_err_cm,
         'mean_elevation_deg': track_df['elevation_deg'].mean()
     })
+    
 
 def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
     df_base = df_raw[df_raw['filtered_length'] > 0].copy()

@@ -1,0 +1,1 @@
+video_day,source_folder,video_name,frame_id,class_name,object_id,track_id,is_3D_complete,in_image_borders,does_overlap,is_front_fish,aspect_ratio,pointcloud_size_ok,fish_3d_ok,overlapping_fish_ids,fish_direction,elevation_deg,azimuth_deg,raw_length,filtered_length,spine_length,rel_error_%,fish_dist_from_camera,especie_gt,gt,failure_reason,abs_error_cm,unique_track,scenario
