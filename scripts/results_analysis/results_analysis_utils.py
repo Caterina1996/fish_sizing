@@ -330,7 +330,9 @@ def track_failure_from_frames(track_df):
         return fallos_reales.mode()[0] 
     return "other"
 
-def plot_tracks_failure_distribution(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0, show_global=True, figsize_video=(12,6), figsize_global=(5,5)):
+def plot_tracks_failure_distribution(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0, 
+                                     show_global=True, figsize_video=(12,6), figsize_global=(5,5),
+                                     context_label =""):
     df_raw_agg = df_raw_agg_input.copy()
     
     # Clasificación en vivo
@@ -352,7 +354,7 @@ def plot_tracks_failure_distribution(df_raw_agg_input, aspect_ratio_thr=3.0, ang
     track_stacked_df.plot(kind="bar", stacked=True, figsize=figsize_video, color=plot_colors)
     plt.xlabel("Video Code")
     plt.ylabel("Número de Tracks")
-    plt.title(f"Distribución apilada de tracks (AR >= {aspect_ratio_thr} | Ang <= {angle_thr}º)")
+    plt.title(f"{context_label} Distribución apilada de tracks (AR >= {aspect_ratio_thr} | Ang <= {angle_thr}º)")
     plt.xticks(rotation=45)
     plt.legend(title="Causa de fallo", bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.tight_layout()
@@ -390,7 +392,10 @@ def plot_tracks_failure_distribution(df_raw_agg_input, aspect_ratio_thr=3.0, ang
 
     return track_failures
 
-def plot_frame_failures(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0, figsize_video=(12,6), figsize_global=(5,5), show_global=True):
+def plot_frame_failures(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0, 
+                        figsize_video=(12,6), figsize_global=(5,5), show_global=True,
+                        context_label =""):
+    
     df_raw_agg = df_raw_agg_input.copy()
     
     # Clasificación en vivo
@@ -428,7 +433,7 @@ def plot_frame_failures(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0, 
             bottom += count
 
         plt.ylabel("Número de Frames")
-        plt.title("Distribución global de frames medidos")
+        plt.title(f"{context_label} Distribución global de frames medidos")
         plt.legend(title="Causa de fallo", bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.tight_layout()
         plt.show()
@@ -441,7 +446,7 @@ def plot_frame_failures(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0, 
 
     return stacked_df
 
-def plot_aspect_ratio_vs_length(df_raw, ASPECT_RATIO_THR=3.0, figsize=(10, 8)):
+def plot_aspect_ratio_vs_length(df_raw, ASPECT_RATIO_THR=3.0, figsize=(10, 8),context_label=""):
     df_valid = df_raw[(df_raw['aspect_ratio'] > 0) & (df_raw['filtered_length'] > 0)].copy()
 
     if df_valid.empty:
@@ -457,7 +462,7 @@ def plot_aspect_ratio_vs_length(df_raw, ASPECT_RATIO_THR=3.0, figsize=(10, 8)):
         axes[0].axhline(y=gt_m, color='green', linestyle='-', linewidth=2.5, label=f'GT ({gt_m:.3f} m)')
 
     axes[0].axvline(x=ASPECT_RATIO_THR, color='red', linestyle='--', linewidth=2, label=f'Umbral AR ({ASPECT_RATIO_THR})')
-    axes[0].set_title("Efecto del Aspect Ratio en la Medición 3D (Filtered Length)", fontsize=13)
+    axes[0].set_title(f"{context_label} Efecto del Aspect Ratio en la Medición 3D (Filtered Length) ", fontsize=13)
     axes[0].set_ylabel("Longitud Medida (m)")
     axes[0].legend(loc='upper right')
 
@@ -513,25 +518,36 @@ def smart_aggregator(track_df, length_col='filtered_length',num_tracks_threshold
     })
     
 
-def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
+def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20,context_label=""):
+    
     df_base = df_raw[df_raw['filtered_length'] > 0].copy()
 
-    mask_2 = df_base['in_image_borders'] == False
-    mask_3 = mask_2 & (df_base['does_overlap'] == False)
+    # Quality filters
+    # 1. Overlaps with image borders or other fish
+    mask_1 = df_base['in_image_borders'] == False
+    mask_2 = mask_1 & (df_base['does_overlap'] == False)
+    
+    # 2. Geometric reconstruction failures (Valid 3D)
+    mask_3 = mask_2 & (df_base['is_3D_complete'] == True)
+    
+    # 3. Parametric quality / pose filters
     mask_4 = mask_3 & (df_base['aspect_ratio'] >= ASPECT_RATIO_THR)
     mask_5 = mask_4 & df_base['elevation_deg'].notna() & (df_base['elevation_deg'].abs() <= ANGLE_THR)
-    mask_6 = mask_5 & (df_base['is_3D_complete'] == True)
 
+    # ---------------------------------------------------------
+    # UPDATED DICTIONARY AND COUNTS
+    # ---------------------------------------------------------
     stages_dict = {
-        "0. Base (HDBSCAN sin filtros)": df_base,
-        "1. + Filtro: Sin Bordes": df_base[mask_2],
-        "2. + Filtro: Sin Solapamiento": df_base[mask_3],
-        f"3. + Filtro: Aspect Ratio >= {ASPECT_RATIO_THR}": df_base[mask_4],
-        f"4. + Filtro: Ángulo Z <= {ANGLE_THR}º": df_base[mask_5],
-        "5. + Filtro: is_3D_complete": df_base[mask_6]
+        "0. Base (HDBSCAN without filters)": df_base,
+        "1. + Filter: No Borders": df_base[mask_1],
+        "2. + Filter: No Overlap": df_base[mask_2],
+        "3. + Filter: is_3D_complete": df_base[mask_3],
+        f"4. + Filter: Aspect Ratio >= {ASPECT_RATIO_THR}": df_base[mask_4],
+        f"5. + Filter: Z-Angle <= {ANGLE_THR}º": df_base[mask_5]
     }
 
-    frames_count = [len(df_base), mask_2.sum(), mask_3.sum(), mask_4.sum(), mask_5.sum(), mask_6.sum()]
+    # Count the number of True values (retained frames) at each step
+    frames_count = [len(df_base), mask_1.sum(), mask_2.sum(), mask_3.sum(), mask_4.sum(), mask_5.sum()]
     agg_stages_dict = {}
 
     print(f"{'ETAPA DEL PIPELINE (CASCADA)':<45} | {'ERROR MEDIO':<15} | {'FRAMES VIVOS':<15} | {'PECES (TRACKS)'}")
@@ -572,7 +588,7 @@ def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
     axes[0].xaxis.set_major_formatter(ScalarFormatter())
     axes[0].set_xticks([0, 0.5, 1, 1.5, 2, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 10, 20])
     axes[0].tick_params(axis='x', rotation=45)
-    axes[0].set_title("Evolución del Error Absoluto al aplicar filtros", fontsize=14, fontweight='bold')
+    axes[0].set_title(f"{context_label} Evolución del Error Absoluto al aplicar filtros", fontsize=14, fontweight='bold')
     axes[0].legend(handles=[mlines.Line2D([], [], color='white', marker='D', markeredgecolor='black', label='Error Medio')], loc='lower right')
 
     tracks_count = [len(df) for df in agg_stages_dict.values()]
@@ -677,7 +693,7 @@ def plot_smart_filter_explanation_pro(df, folder_code, track_id, length_col='fil
     plt.tight_layout()
     plt.show()
 
-def plot_thresholds_interaction(df_base, ar_range=None, angles_to_test=None, optimal_ar=3):
+def plot_thresholds_interaction(df_base, ar_range=None, angles_to_test=None, optimal_ar=3,context=""):
     
     # Clean up false positives so they don't affect the graphs
     if 'failure_reason' in df_base.columns:
@@ -731,25 +747,28 @@ def plot_thresholds_interaction(df_base, ar_range=None, angles_to_test=None, opt
     df_interaction = pd.DataFrame(results)
     
     # 3 horizontal plots (increase figure width to 22)
+    
+    ctx_str = f" ({context})" if context else ""
+    
     fig, axes = plt.subplots(1, 3, figsize=(22, 6))
     palette = sns.color_palette("Set1", n_colors=len(angles_to_test))
 
     # --- PANEL 1: Error Evolution ---
     sns.lineplot(data=df_interaction, x='AR_Thr', y='Error_cm', hue='Angle_Thr', marker='o', palette=palette, ax=axes[0])
     axes[0].axvline(x=optimal_ar, color='black', linestyle=':', label=f'Chosen AR ({optimal_ar})')
-    axes[0].set_title("1. Interaction: Angle Effect on Error", fontweight='bold')
+    axes[0].set_title(f"1. Interaction: Angle Effect on Error {ctx_str}", fontweight='bold')
     axes[0].set_ylabel("Mean Absolute Error (cm)")
     
     # --- PANEL 2: Frame Retention ---
     sns.lineplot(data=df_interaction, x='AR_Thr', y='Frames', hue='Angle_Thr', marker='s', palette=palette, ax=axes[1])
     axes[1].axvline(x=optimal_ar, color='black', linestyle=':')
-    axes[1].set_title("2. Data Cost: Retained Frames", fontweight='bold')
+    axes[1].set_title(f"2. Data Cost: Retained Frames{ctx_str}", fontweight='bold')
     axes[1].set_ylabel("Number of Frames")
 
     # --- PANEL 3: Track Retention (Real Fish) ---
     sns.lineplot(data=df_interaction, x='AR_Thr', y='Tracks', hue='Angle_Thr', marker='D', palette=palette, ax=axes[2])
     axes[2].axvline(x=optimal_ar, color='black', linestyle=':')
-    axes[2].set_title("3. True Cost: Retained Tracks (Fish)", fontweight='bold')
+    axes[2].set_title(f"3. True Cost: Retained Tracks{ctx_str}", fontweight='bold')
     axes[2].set_ylabel("Number of Tracks")
 
     plt.tight_layout()
