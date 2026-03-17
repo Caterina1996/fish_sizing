@@ -22,62 +22,57 @@ def aggregate_results_from_root_new(root_dir, day_code, output_csv_path=None, re
     """
     root_dir = Path(root_dir)
     pattern = f"**/{results_foldername}/*raw.csv"
-    cprint(f"🔍 Searching for RAW data in: {root_dir}", "cyan")
+    cprint(f"🔍 Buscando datos RAW en: {root_dir}", "cyan")
 
     result_files = list(root_dir.rglob(pattern))
 
     if not result_files:
-        cprint(f"❌ No '*raw.csv' files found in '{results_foldername}' folders.", "red")
+        cprint(f"❌ No se encontraron archivos '*raw.csv'.", "red")
         return pd.DataFrame()
 
-    cprint(f"📂 Found {len(result_files)} raw result files.", "green")
+    cprint(f"📂 Encontrados {len(result_files)} archivos de resultados crudos.", "green")
     all_dfs = []
 
     for filepath in result_files:
         try:
-
-            filename = filepath.name  # e.g., "2024_11_28_13_14_42_0_raw.csv"
-            base_name = filename.replace("_raw.csv", "") # e.g., "2024_11_28_13_14_42_0"
+            # filepath.parts contiene toda la ruta separada
+            # Ej multi: ... / 13_14_42 / 13-14-43_0 / corrected_results / archivo.csv
+            # Ej single: ... / 10_48_44 / 0 / results_article_basic / corrected_results / archivo.csv
             
-            # Strip the day_code from the beginning to get the pure video_name
-            if base_name.startswith(day_code):
-                # e.g., "13_14_42_0" (lstrip removes the leftover underscore)
-                video_name = base_name[len(day_code):].lstrip("_") 
+            parent_folder = filepath.parts[-3] # La carpeta justo encima de 'corrected_results'
+            
+            # Si el parent folder es "results_article..." (pasa en single_fish)
+            if "results" in parent_folder.lower():
+                # Cogemos las dos carpetas por encima (Ej: 10_48_44 y 0)
+                folder_name = filepath.parts[-5]
+                sub_id = filepath.parts[-4]
+                video_name = f"{folder_name}_{sub_id}"
             else:
-                video_name = base_name
+                # Es multiple_fish, el parent_folder es exactamente la llave del GT (Ej: 13-14-43_0)
+                video_name = parent_folder
             
             df = pd.read_csv(filepath)
             
             if not df.empty:
                 df['video_day'] = day_code
                 df['video_name'] = video_name
-                # We keep source_folder identical to video_name so your plotting functions don't break!
                 df['source_folder'] = video_name 
                 all_dfs.append(df)
-            else:
-                cprint(f"   ⚠️ Empty: {video_name}", "yellow")
                 
         except Exception as e:
-            cprint(f"   ❌ Error reading {filepath}: {e}", "red")
+            cprint(f"   ❌ Error leyendo {filepath}: {e}", "red")
 
     if not all_dfs:
         return pd.DataFrame()
 
     agg_df = pd.concat(all_dfs, ignore_index=True)
 
-    # Reorder columns
+    # Reordenar columnas
     context_cols = ["video_day", "source_folder", "video_name"]
     other_cols = [c for c in agg_df.columns if c not in context_cols]
     agg_df = agg_df[context_cols + other_cols]
 
-    if output_csv_path is None: 
-        output_csv_path = root_dir
-        
-    output_path = Path(output_csv_path) / f"{day_code}_raw_aggregated.csv"
-    os.makedirs(output_path.parent, exist_ok=True)
-    agg_df.to_csv(output_path, index=False)
-
-    cprint(f"\n📊 TOTAL AGGREGATED: {len(agg_df)} data rows.", "magenta", attrs=["bold"])
+    cprint(f"\n📊 TOTAL AGREGADO: {len(agg_df)} líneas de datos.", "magenta", attrs=["bold"])
     return agg_df
 
 
@@ -314,6 +309,27 @@ def assign_failure_reasons(df, aspect_ratio_thr=3.0, angle_thr=20.0):
 # GRÁFICOS Y ANÁLISIS
 # =====================================================================
 
+def track_failure_from_frames_0(track_df):
+    failure_priority = ["measured", "incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail", "other"]
+    
+    
+    if "measured" in track_df["failure_reason"].values:
+        return "measured"
+    for reason in failure_priority[1:]:
+        if reason in track_df["failure_reason"].values:
+            return reason
+    return "other"
+
+def track_failure_from_frames(track_df):
+    if "measured" in track_df["failure_reason"].values:
+        return "measured"
+    fallos_reales = track_df[track_df["failure_reason"] != "other"]["failure_reason"]
+    
+    if not fallos_reales.empty:
+        # .mode() devuelve los valores más repetidos. Cogemos el primero [0] en caso de empate
+        return fallos_reales.mode()[0] 
+    return "other"
+
 def plot_tracks_failure_distribution(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0, show_global=True, figsize_video=(12,6), figsize_global=(5,5)):
     df_raw_agg = df_raw_agg_input.copy()
     
@@ -322,14 +338,6 @@ def plot_tracks_failure_distribution(df_raw_agg_input, aspect_ratio_thr=3.0, ang
     
     failure_priority = ["measured", "incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail", "other"]
     plot_colors = ["#4CAF50", "#FFB74D", "#FF8A65", "#E57373", "#BA68C8", "#F06292", "#90A4AE"]
-
-    def track_failure_from_frames(track_df):
-        if "measured" in track_df["failure_reason"].values:
-            return "measured"
-        for reason in failure_priority[1:]:
-            if reason in track_df["failure_reason"].values:
-                return reason
-        return "other"
 
     track_failures = df_raw_agg.groupby("unique_track").apply(track_failure_from_frames).reset_index()
     track_failures.columns = ["unique_track", "track_failure_reason"]
@@ -548,7 +556,7 @@ def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
         
         print(f"{name:<45} | {mean_err:>5.2f} ± {std_err:>4.2f} cm | {f_count:>7} frames | {len(df_stage):>5} tracks")
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(20, 6))
     stage_names = ["0. Base", "+ No Bordes", "+ No Solape", "+ AspectRatio", "+ ÁnguloZ", "+ 3D_ok"]
 
     plot_data = []
@@ -562,7 +570,7 @@ def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20):
         
     axes[0].set_xscale('symlog', linthresh=20)
     axes[0].xaxis.set_major_formatter(ScalarFormatter())
-    axes[0].set_xticks([0, 0.5, 1, 1.5, 2, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 10, 50])
+    axes[0].set_xticks([0, 0.5, 1, 1.5, 2, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 10, 20])
     axes[0].tick_params(axis='x', rotation=45)
     axes[0].set_title("Evolución del Error Absoluto al aplicar filtros", fontsize=14, fontweight='bold')
     axes[0].legend(handles=[mlines.Line2D([], [], color='white', marker='D', markeredgecolor='black', label='Error Medio')], loc='lower right')
@@ -764,5 +772,79 @@ def plot_track_evolution_detailed(df, folder_code, track_id, ar_thr=3, angle_thr
     for ax in axes:
         for bf in bad_frames: ax.axvspan(bf - 0.5, bf + 0.5, color='red', alpha=0.15)
             
+    plt.tight_layout()
+    plt.show()
+    
+    
+def plot_final_error_analysis(df_filtered, top_n_outliers=15, figsize=(18, 14), title="Análisis Profundo del Error en la Etapa Final (3D Complete)"):
+    """
+    Genera un panel de 4 gráficas para analizar en profundidad los errores
+    de las mediciones finales retenidas.
+    """
+    if df_filtered.empty:
+        print("⚠️ El DataFrame está vacío. No hay datos para graficar.")
+        return
+
+    # Trabajar con una copia para no alterar el original ni generar warnings
+    df = df_filtered.copy()
+
+    # 1. Reconstruir el 'unique_track' por si el agregador lo eliminó al agrupar
+    if 'unique_track' not in df.columns:
+        # Asumimos que existen estas columnas; usamos .get() o manejamos excepciones si faltan
+        df['unique_track'] = df['video_day'].astype(str) + "/" + df['video_name'].astype(str) + "/" + df['track_id'].astype(str)
+
+    # Configuración visual para gráficos con calidad de publicación
+    sns.set_theme(style="whitegrid", context="paper", font_scale=1.2)
+    fig, axes = plt.subplots(2, 2, figsize=figsize)
+    fig.suptitle(title, fontsize=18, fontweight='bold', y=0.98)
+
+    # ==========================================================
+    # 📊 GRÁFICA 1: Boxplot de Error por Vídeo
+    # ==========================================================
+    col_video = 'source_folder' if 'source_folder' in df.columns else 'video_name'
+    sns.boxplot(data=df, x='abs_error_cm', y=col_video, ax=axes[0, 0], palette='viridis')
+    sns.stripplot(data=df, x='abs_error_cm', y=col_video, size=5, color=".3", linewidth=0, ax=axes[0, 0], alpha=0.6)
+    axes[0, 0].set_title('1. Consistencia por Secuencia de Vídeo', fontweight='bold')
+    axes[0, 0].set_xlabel('Error Absoluto (cm)')
+    axes[0, 0].set_ylabel('Secuencia de Vídeo')
+
+    # ==========================================================
+    # 📊 GRÁFICA 2: Error Absoluto por Especie
+    # ==========================================================
+    if 'especie_gt' in df.columns:
+        sns.boxplot(data=df, x='especie_gt', y='abs_error_cm', ax=axes[0, 1], palette='Set2')
+        sns.swarmplot(data=df, x='especie_gt', y='abs_error_cm', color=".25", ax=axes[0, 1])
+        axes[0, 1].set_title('2. Error según la Especie', fontweight='bold')
+        axes[0, 1].set_xlabel('Especie (Ground Truth)')
+    else:
+        axes[0, 1].text(0.5, 0.5, 'Columna especie_gt no encontrada', ha='center', va='center')
+        axes[0, 1].set_title('2. Error según la Especie (Sin Datos)')
+        
+    axes[0, 1].set_ylabel('Error Absoluto (cm)')
+
+    # ==========================================================
+    # 📊 GRÁFICA 3: Sesgo de Escala (Error vs Tamaño Real)
+    # ==========================================================
+    hue_col = 'especie_gt' if 'especie_gt' in df.columns else None
+    sns.scatterplot(
+        data=df, x='gt_cm', y='abs_error_cm', hue=hue_col, 
+        size='n_frames_validos', sizes=(50, 400), alpha=0.7, ax=axes[1, 0], palette='Set1'
+    )
+    sns.regplot(data=df, x='gt_cm', y='abs_error_cm', scatter=False, ax=axes[1, 0], color='gray', line_kws={"linestyle":"--"})
+    axes[1, 0].set_title('3. Sesgo de Escala: Error vs. Tamaño Real', fontweight='bold')
+    axes[1, 0].set_xlabel('Tamaño Real del Pez (cm)')
+    axes[1, 0].set_ylabel('Error Absoluto (cm)')
+    if hue_col:
+        axes[1, 0].legend(title="Especie & Frames", bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+
+    # ==========================================================
+    # 📊 GRÁFICA 4: Los "Villanos" (Top Outliers)
+    # ==========================================================
+    top_outliers = df.nlargest(top_n_outliers, 'abs_error_cm')
+    sns.barplot(data=top_outliers, x='abs_error_cm', y='unique_track', ax=axes[1, 1], palette='Reds_r')
+    axes[1, 1].set_title(f'4. Top {top_n_outliers} Outliers (Tracks con Mayor Error)', fontweight='bold')
+    axes[1, 1].set_xlabel('Error Absoluto (cm)')
+    axes[1, 1].set_ylabel('ID Único del Track')
+
     plt.tight_layout()
     plt.show()
