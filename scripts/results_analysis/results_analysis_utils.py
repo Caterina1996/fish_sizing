@@ -678,36 +678,86 @@ def plot_smart_filter_explanation_pro(df, folder_code, track_id, length_col='fil
     plt.show()
 
 def plot_thresholds_interaction(df_base, ar_range=None, angles_to_test=None, optimal_ar=3):
+    
+    # Clean up false positives so they don't affect the graphs
+    if 'failure_reason' in df_base.columns:
+        df_base = df_base[df_base['failure_reason'] != 'not_a_fish'].copy()
+        
     if ar_range is None: ar_range = np.arange(1.0, 5, 0.2)
-    if angles_to_test is None: angles_to_test = [15, 20, 25, 30,60, 90]
+    if angles_to_test is None: angles_to_test = [15, 20, 25, 30, 60, 90]
         
     def evaluate_thresholds(df, ar_thr, angle_thr):
         df_filt = df[(df['aspect_ratio'] >= ar_thr) & (df['elevation_deg'].abs() <= angle_thr)]
         if df_filt.empty: return np.nan, 0, 0
-        df_agg = df_filt.groupby(['video_day', 'source_folder', 'track_id']).apply(smart_aggregator).dropna()
-        return df_agg['abs_error_cm'].mean() if not df_agg.empty else np.nan, len(df_filt), len(df_agg)
+        
+        # Agrupamos y aplicamos el agregador
+        df_agg = df_filt.groupby(['video_day', 'source_folder', 'track_id']).apply(smart_aggregator)
+        
+        if df_agg.empty: return np.nan, 0, 0
 
+        if 'abs_error_cm' not in df_agg.columns:
+            # Buscamos cómo se llaman tus columnas de GT y Longitud en este momento
+            gt_col = 'gt' if 'gt' in df_agg.columns else ('gt_cm' if 'gt_cm' in df_agg.columns else None)
+            len_col = 'calculated_length_cm' if 'calculated_length_cm' in df_agg.columns else ('filtered_length' if 'filtered_length' in df_agg.columns else None)
+            
+            if gt_col and len_col:
+                # Si usas 'filtered_length' (metros), multiplicamos por 100. Si ya son cm, directo.
+                if len_col == 'filtered_length':
+                    df_agg['abs_error_cm'] = abs((df_agg[len_col] * 100) - df_agg[gt_col])
+                else:
+                    df_agg['abs_error_cm'] = abs(df_agg[len_col] - df_agg[gt_col])
+            else:
+                # Si no encuentra las columnas, devuelve NaN para no romper el bucle
+                return np.nan, len(df_filt), len(df_agg)
+
+        
+        df_agg = df_agg.dropna(subset=['abs_error_cm'])
+        
+        return df_agg['abs_error_cm'].mean() if not df_agg.empty else np.nan, len(df_filt), len(df_agg)
+        
+        
     results = []
     for ang in tqdm(angles_to_test, desc="Evaluating Angles"):
         for ar in ar_range:
             err, frames, tracks = evaluate_thresholds(df_base, ar, ang)
-            results.append({'Angle_Thr': "No Z-Filter" if ang==90 else f"Angle <= {ang}º", 'AR_Thr': ar, 'Error_cm': err, 'Frames': frames, 'Tracks': tracks})
+            results.append({
+                'Angle_Thr': "No Z-Filter" if ang==90 else f"Angle <= {ang}º", 
+                'AR_Thr': ar, 
+                'Error_cm': err, 
+                'Frames': frames, 
+                'Tracks': tracks
+            })
 
     df_interaction = pd.DataFrame(results)
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    
+    # 3 horizontal plots (increase figure width to 22)
+    fig, axes = plt.subplots(1, 3, figsize=(22, 6))
     palette = sns.color_palette("Set1", n_colors=len(angles_to_test))
 
+    # --- PANEL 1: Error Evolution ---
     sns.lineplot(data=df_interaction, x='AR_Thr', y='Error_cm', hue='Angle_Thr', marker='o', palette=palette, ax=axes[0])
     axes[0].axvline(x=optimal_ar, color='black', linestyle=':', label=f'Chosen AR ({optimal_ar})')
-    axes[0].set_title("Interaction: Angle Effect on Error", fontweight='bold')
+    axes[0].set_title("1. Interaction: Angle Effect on Error", fontweight='bold')
+    axes[0].set_ylabel("Mean Absolute Error (cm)")
     
+    # --- PANEL 2: Frame Retention ---
     sns.lineplot(data=df_interaction, x='AR_Thr', y='Frames', hue='Angle_Thr', marker='s', palette=palette, ax=axes[1])
     axes[1].axvline(x=optimal_ar, color='black', linestyle=':')
-    axes[1].set_title("Data Cost: Retained frames", fontweight='bold')
+    axes[1].set_title("2. Data Cost: Retained Frames", fontweight='bold')
+    axes[1].set_ylabel("Number of Frames")
+
+    # --- PANEL 3: Track Retention (Real Fish) ---
+    sns.lineplot(data=df_interaction, x='AR_Thr', y='Tracks', hue='Angle_Thr', marker='D', palette=palette, ax=axes[2])
+    axes[2].axvline(x=optimal_ar, color='black', linestyle=':')
+    axes[2].set_title("3. True Cost: Retained Tracks (Fish)", fontweight='bold')
+    axes[2].set_ylabel("Number of Tracks")
 
     plt.tight_layout()
     plt.show()
+    
     return df_interaction
+    
+  
 
 def plot_track_evolution_detailed(df, folder_code, track_id, ar_thr=3, angle_thr=20.0, dev_median=1.5, zoom_margin_cm=5.0):
     folder_str, track_str = str(folder_code), str(track_id)
