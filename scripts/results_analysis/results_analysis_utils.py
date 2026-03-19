@@ -392,6 +392,7 @@ def plot_tracks_failure_distribution(df_raw_agg_input, aspect_ratio_thr=3.0, ang
 
     return track_failures
 
+
 def plot_frame_failures(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0, 
                         figsize_video=(12,6), figsize_global=(5,5), show_global=True,
                         context_label =""):
@@ -403,6 +404,66 @@ def plot_frame_failures(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0,
 
     failure_priority = ["measured", "incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail", "other"]
     plot_colors = ["#4CAF50", "#FFB74D", "#FF8A65", "#E57373", "#BA68C8", "#F06292", "#90A4AE"]
+
+    stacked_df = df_raw_agg.groupby(["source_folder", "failure_reason"]).size().unstack(fill_value=0)
+    for col in failure_priority:
+        if col not in stacked_df.columns: stacked_df[col] = 0
+    stacked_df = stacked_df[failure_priority]
+
+    stacked_df.plot(kind="bar", stacked=True, figsize=figsize_video, color=plot_colors)
+    plt.xlabel("Video Code")
+    plt.ylabel("Número de Frames")
+    plt.title(f"Distribución apilada de frames (AR >= {aspect_ratio_thr} | Ang <= {angle_thr}º)")
+    plt.xticks(rotation=45)
+    plt.legend(title="Causa de fallo", bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    plt.show()
+
+    if show_global:
+        global_counts = df_raw_agg["failure_reason"].value_counts().reindex(failure_priority, fill_value=0)
+        global_df = global_counts.reset_index()
+        global_df.columns = ["Causa de Fallo", "Cantidad"]
+
+        plt.figure(figsize=figsize_global)
+        bottom = 0
+
+        for i, row in global_df.iterrows():
+            count = row["Cantidad"]
+            label_with_count = f"{row['Causa de Fallo']} ({count})"
+            plt.bar(["Global"], [count], bottom=bottom, color=plot_colors[i], label=label_with_count)
+            bottom += count
+
+        plt.ylabel("Número de Frames")
+        plt.title(f"{context_label} Distribución global de frames medidos")
+        plt.legend(title="Causa de fallo", bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.tight_layout()
+        plt.show()
+
+        print("\n" + "="*60)
+        print("📊 TABLA 1: Distribución Global de Frames")
+        print("="*60)
+        global_df["Porcentaje (%)"] = (global_df["Cantidad"] / global_df["Cantidad"].sum() * 100).round(2)
+        display(global_df)
+
+    return stacked_df
+
+
+
+def plot_frame_failures_0(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0, 
+                        figsize_video=(12,6), figsize_global=(5,5), show_global=True,
+                        context_label =""):
+    
+    df_raw_agg = df_raw_agg_input.copy()
+    
+    # Clasificación en vivo
+    df_raw_agg = assign_failure_reasons(df_raw_agg, aspect_ratio_thr, angle_thr)
+    df_raw_agg.loc[df_raw_agg["track_id"] == -1, "failure_reason"] = "not_tracked"
+
+    failure_priority = ["measured","not_tracked", "incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail", "other"]
+    plot_colors = ["#4CAF50","#DB1B1B", "#FFB74D", "#FF8A65", "#E57373", "#BA68C8", "#F06292", "#90A4AE"]
+    
+    not_tracked_ratio = (df_raw_agg["track_id"] == -1).mean() * 100
+    print(f"🚫 Frames no traqueados: {not_tracked_ratio:.2f}%")
 
     stacked_df = df_raw_agg.groupby(["source_folder", "failure_reason"]).size().unstack(fill_value=0)
     for col in failure_priority:
@@ -476,7 +537,7 @@ def plot_aspect_ratio_vs_length(df_raw, ASPECT_RATIO_THR=3.0, figsize=(10, 8),co
     
 def smart_aggregator(track_df, length_col='filtered_length',num_tracks_threshold=5,deviation_from_median=1.5):
     num_frames = len(track_df)
-    if num_frames < num_tracks_threshold: return None
+    if num_frames <= num_tracks_threshold: return None
     
     if track_df.empty:
         return pd.DataFrame(columns=['source_folder', 'track_id', 'n_frames_validos', 'calculated_length_cm', 'gt_cm', 'abs_error_cm', 'mean_elevation_deg'])
