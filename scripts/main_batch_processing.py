@@ -21,7 +21,7 @@ from fish_sizing.measurement.fish_sizer import FishSizer
 from fish_sizing.utils.config import transform_path2docker
 from fish_sizing.utils.tools import save_run_config, cprint_and_log, move_inferred_images
 
-BAGS_DIR="//media/slimbook/easystore/bagfiles/seleccio_article/2025_08_21/lanty_1/multiple_fish/"
+BAGS_DIR="//media/slimbook/easystore1/bagfiles/seleccio_article/2025_08_21/lanty_1/1_peix/"
 MODEL_PATH="/home/slimbook/models/binary/yv11m/Pool_v5-revisada_no_duplicats_from_ckpt/40e_finetune_2/weights/last.pt"
 
 CONF_THR = 0.5
@@ -29,7 +29,7 @@ gt = ""
 Visualize_online = False
 use_wls = True
 
-OUT_PATH = "/media/slimbook/easystore/results_fish_sizing/seleccio_article/lanty1/2025_08_21/multiple_fish/"
+OUT_PATH = "//media/slimbook/easystore1/results_fish_sizing/seleccio_article/lanty1/2025_08_21/single_fish/"
 SELECTED_PIPELINE = "basic"
 image_channels = 1 # ATTENTION!!! CHANGE TO 3 FOR PIPELINES THAT USE COLOR IMAGES AS OUTPUT
 

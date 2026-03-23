@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 # Cambia esto por la ruta a tu carpeta principal (ej: '/ruta/a/2024_11_28')
-ROOT_DIR = Path("/home/slimbook/fish_sizing/ARTICLE/2025_08_21") 
+ROOT_DIR = Path("//home/slimbook/fish_sizing/ARTICLE/DATASET_1/2024_11_28/") 
 day_code = ROOT_DIR.name # Extrae automáticamente '2024_11_28'
 
 # Busca todos los .csv dentro de cualquier carpeta llamada 'corrected_results'
@@ -11,7 +11,7 @@ for csv_path in ROOT_DIR.rglob("corrected_results/*.csv"):
     old_name = csv_path.name
     
     # 1. Quitar 'pending_'
-    new_name = old_name.replace("pending_", "")
+    new_name = old_name.replace("corrected_results", "results")
     
     # 2. Añadir el día si no lo tiene ya
     if not new_name.startswith(day_code):

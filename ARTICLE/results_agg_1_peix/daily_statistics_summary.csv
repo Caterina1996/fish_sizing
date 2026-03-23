@@ -1,6 +1,0 @@
-dataset,total_valid_tracks,mean_abs_error_cm,median_abs_error_cm,std_abs_error_cm
-2024_11_12,26,1.28,0.68,2.97
-2024_11_28,38,0.67,0.3,1.0
-2025_05_08,3,2.18,2.02,0.51
-2025_08_21,25,1.24,0.65,1.77
-pool,67,0.97,0.48,2.01
