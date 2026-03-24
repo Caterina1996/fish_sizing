@@ -398,8 +398,269 @@ class Fish3D(Fish2D):
             print(f"  - Eliminados por SOR (Naranja): {len(pts_removed_sor)}")
             
             o3d.visualization.draw_geometries(geoms_to_draw)
-            
+    
+    
+    def render_o3d_to_image(geoms, width=800, height=600):
+        vis = o3d.visualization.Visualizer()
+        vis.create_window(visible=False, width=width, height=height)
         
+        for g in geoms:
+            vis.add_geometry(g)
+        
+        vis.poll_events()
+        vis.update_renderer()
+        
+        img = vis.capture_screen_float_buffer(do_render=True)
+        vis.destroy_window()
+        
+        return np.asarray(img)
+   
+    def filter_outliers_HDBSCAN_adaptive_plots(self, 
+                                     min_cluster_size=40, 
+                                     max_fish_thickness_meters=0.08,  # max fish thickness (adjustable)
+                                     debug_plot=True):
+        import numpy as np
+        import open3d as o3d
+        import matplotlib.pyplot as plt
+        import os
+        from sklearn.decomposition import PCA
+        import hdbscan
+
+        if self.pointcloud_raw is None or len(self.pointcloud_raw) < 50:
+            self.pointcloud_filtered = self.pointcloud_raw
+            self.colors_filtered = self.colors
+            self.pointcloud_size_ok = False
+            return
+
+        pts_raw = self.pointcloud_raw
+        colors_raw = self.colors
+
+        # =========================
+        # 1. SOR
+        # =========================
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(pts_raw[:, :3])
+        cl, ind_sor = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.5)
+
+        mask_sor = np.zeros(len(pts_raw), dtype=bool)
+        mask_sor[ind_sor] = True
+        pts_removed_sor = pts_raw[~mask_sor, :3]
+
+        pts = pts_raw[ind_sor]
+        xyz = pts[:, :3]
+
+        # =========================
+        # 2. HDBSCAN
+        # =========================
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, allow_single_cluster=True)
+        labels = clusterer.fit_predict(xyz)
+
+        valid_labels = set(labels)
+        valid_labels.discard(-1)
+
+        if not valid_labels:
+            self.pointcloud_filtered = pts
+            self.colors_filtered = colors_raw[ind_sor]
+            self.pointcloud_size_ok = False
+            return
+
+        largest_label = max(valid_labels, key=lambda l: np.sum(labels == l))
+        main_cluster = xyz[labels == largest_label]
+
+        # =========================
+        # 3. PCA
+        # =========================
+        pca = PCA(n_components=3)
+        pca.fit(main_cluster)
+
+        thickness_vector = pca.components_[2]
+        centroid = np.median(main_cluster, axis=0)
+
+        # =========================
+        # 4. Thickness filtering
+        # =========================
+        vecs = xyz - centroid
+        dist = np.abs(np.dot(vecs, thickness_vector))
+        half_thickness = max_fish_thickness_meters / 2
+
+        mask_keep = dist < half_thickness
+
+        self.pointcloud_filtered = pts[mask_keep]
+        self.colors_filtered = colors_raw[ind_sor][mask_keep]
+        self.pointcloud_size_ok = np.sum(mask_keep) > 10
+
+        # =========================
+        # CAMERA (KEY PART)
+        # =========================
+        def get_camera(pca, centroid):
+            front = -(0.6 * pca.components_[1] + 0.4 * pca.components_[0])
+            up = pca.components_[2]
+            return front, centroid, up
+
+        def render(geoms, front, lookat, up, width=1400, height=1000):
+            vis = o3d.visualization.Visualizer()
+            vis.create_window(visible=False, width=width, height=height)
+
+            for g in geoms:
+                vis.add_geometry(g)
+
+            ctr = vis.get_view_control()
+            ctr.set_front(front)
+            ctr.set_lookat(lookat)
+            ctr.set_up(up)
+            ctr.set_zoom(0.7)
+
+            vis.poll_events()
+            vis.update_renderer()
+            img = vis.capture_screen_float_buffer(True)
+            vis.destroy_window()
+
+            return np.asarray(img)
+
+        if debug_plot:
+
+            front, lookat, up = get_camera(pca, centroid)
+
+            # =========================
+            # GEOMETRIES
+            # =========================
+
+            # RAW
+            pcd_raw = o3d.geometry.PointCloud()
+            pcd_raw.points = o3d.utility.Vector3dVector(pts_raw[:, :3])
+            pcd_raw.paint_uniform_color([0.6, 0.6, 0.6])
+
+            # SOR
+            pcd_sor = o3d.geometry.PointCloud()
+            pcd_sor.points = o3d.utility.Vector3dVector(xyz)
+            pcd_sor.paint_uniform_color([0, 0, 1])
+
+            # KEPT
+            pcd_kept = o3d.geometry.PointCloud()
+            pcd_kept.points = o3d.utility.Vector3dVector(xyz[mask_keep])
+            pcd_kept.paint_uniform_color([0, 0, 1])
+
+            # REMOVED THICKNESS
+            pcd_red = o3d.geometry.PointCloud()
+            pcd_red.points = o3d.utility.Vector3dVector(xyz[~mask_keep])
+            pcd_red.paint_uniform_color([1, 0, 0])
+
+            # REMOVED SOR
+            pcd_orange = o3d.geometry.PointCloud()
+            if len(pts_removed_sor) > 0:
+                pcd_orange.points = o3d.utility.Vector3dVector(pts_removed_sor)
+                pcd_orange.paint_uniform_color([1, 0.5, 0])
+
+            # =========================
+            # PLANES (WIREFRAME)
+            # =========================
+            plane_size = max_fish_thickness_meters * 2
+            base_plane = np.array([
+                [-plane_size, -plane_size, 0],
+                [ plane_size, -plane_size, 0],
+                [ plane_size,  plane_size, 0],
+                [-plane_size,  plane_size, 0]
+            ])
+
+            def rot(v1, v2):
+                a, b = v1/np.linalg.norm(v1), v2/np.linalg.norm(v2)
+                v = np.cross(a, b)
+                c = np.dot(a, b)
+                s = np.linalg.norm(v)
+                if s == 0: return np.eye(3)
+                kmat = np.array([[0,-v[2],v[1]],[v[2],0,-v[0]],[-v[1],v[0],0]])
+                return np.eye(3) + kmat + kmat@kmat*((1-c)/(s**2))
+
+            R = rot(np.array([0,0,1]), thickness_vector)
+
+            planes_wire = []
+            for offset in [-half_thickness, half_thickness]:
+                pts_plane = base_plane @ R.T + centroid + thickness_vector * offset
+                mesh = o3d.geometry.TriangleMesh()
+                mesh.vertices = o3d.utility.Vector3dVector(pts_plane)
+                mesh.triangles = o3d.utility.Vector3iVector([[0,1,2],[0,2,3]])
+                wire = o3d.geometry.LineSet.create_from_triangle_mesh(mesh)
+                wire.paint_uniform_color([0.2, 0.8, 0.2])
+                planes_wire.append(wire)
+
+            # =========================
+            # RENDER IMAGES
+            # =========================
+            img_raw = render([pcd_raw], front, lookat, up)
+            img_sor = render([pcd_sor], front, lookat, up)
+            img_clip = render([pcd_kept, pcd_red] + planes_wire, front, lookat, up)
+            img_final = render([pcd_kept], front, lookat, up)
+            img_summary = render([pcd_kept, pcd_red, pcd_orange] + planes_wire, front, lookat, up)
+
+            # -------------------------------
+            # FUNCTION FOR SAVING IMAGES
+            # -------------------------------
+            def save_image(img, path, title):
+                plt.figure(figsize=(12, 9))
+                plt.imshow(img)
+                plt.title(title, fontsize=16)
+                plt.axis('off')
+                plt.tight_layout()
+                plt.savefig(path, dpi=200)
+                plt.close()
+
+            # -------------------------------
+            # CREATE OUTPUT FOLDER
+            # -------------------------------
+            out_dir = f"debug_fish_{self.track_id}"
+            os.makedirs(out_dir, exist_ok=True)
+
+            # -------------------------------
+            # RENDER ALL IMAGES
+            # -------------------------------
+            front, lookat, up = get_camera(pca, centroid)
+
+            img_raw = render([pcd_raw], front, lookat, up)
+            img_sor = render([pcd_sor], front, lookat, up)
+            img_clip = render([pcd_kept, pcd_red] + planes_wire, front, lookat, up)
+            img_final = render([pcd_kept], front, lookat, up)
+            img_summary = render([pcd_kept, pcd_red, pcd_orange] + planes_wire, front, lookat, up)
+
+            # -------------------------------
+            # SAVE INDIVIDUAL STAGES
+            # -------------------------------
+            save_image(img_raw, f"{out_dir}/raw.png", "Raw Point Cloud")
+            save_image(img_sor, f"{out_dir}/after_sor.png", "After SOR")
+            save_image(img_clip, f"{out_dir}/clipping.png", "Clipping Stage")
+            save_image(img_final, f"{out_dir}/final.png", "Final Filtered")
+            # Calcular la cámara perpendicular al grosor
+            front_perp = thickness_vector          # mirar en la dirección del grosor
+            lookat_perp = centroid
+            up_perp = pca.components_[1]          # eje vertical del pez (head-tail axis como referencia)
+
+            # Renderizar la pointcloud filtrada final
+            img_filtered_perp = render([pcd_kept], front_perp, lookat_perp, up_perp)
+
+            # Guardar
+            save_image(img_filtered_perp, f"{out_dir}/final_perpendicular.png", "Final Filtered (Perpendicular View)")
+
+            # -------------------------------
+            # SUMMARY IMAGE WITH LEGEND (OUTSIDE AXIS)
+            # -------------------------------
+            fig, ax = plt.subplots(figsize=(12, 9))
+            ax.imshow(img_summary)
+            ax.axis('off')
+
+            from matplotlib.patches import Patch
+            legend_elements = [
+                Patch(color='blue', label='Kept'),
+                Patch(color='red', label='Removed (Thickness)'),
+                Patch(color='orange', label='Removed (SOR)'),
+                Patch(color='green', label='Clipping Planes')
+            ]
+
+            # Leyenda fuera del axis para no tapar el pez
+            ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.02, 1), fontsize=14)
+
+            plt.tight_layout()
+            plt.savefig(f"{out_dir}/summary.png", dpi=200, bbox_inches='tight')
+            plt.close()
+    
     def filter_outliers_HDBSCAN_adaptive_saltos_imnproved(self, min_cluster_size=20, z_jump_threshold_abs=0.03, debug_plot=False):
         pts = self.pointcloud_raw
         xyz = pts[:, :3]

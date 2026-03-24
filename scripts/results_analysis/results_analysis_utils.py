@@ -673,40 +673,50 @@ def plot_ablation_pipeline(df_raw, ASPECT_RATIO_THR=3, ANGLE_THR=20,context_labe
     
     return stages_dict, agg_stages_dict
 
-def plot_smart_filter_explanation_pro(df, folder_code, track_id, length_col='filtered_length', ar_thr=1.8, angle_thr=20.0):
+def plot_smart_filter_explanation_pro(
+    df, 
+    folder_code, 
+    track_id, 
+    length_col='filtered_length', 
+    ar_thr=1.8, 
+    angle_thr=20.0
+):
     folder_str, track_str = str(folder_code), str(track_id)
     mask = (df['source_folder'].astype(str) == folder_str) & (df['track_id'].astype(str) == track_str)
     track_df = df[mask].copy()
     
-    if track_df.empty: return
+    if track_df.empty: 
+        return
         
     track_df['frame_num'] = track_df['frame_id'].astype(str).str.extract(r'(\d+)').astype(float).astype(int)
     track_df[length_col] = track_df[length_col].replace(-1, np.nan)
     valid_df = track_df.dropna(subset=[length_col]).sort_values(by='frame_num').copy()
     
-    if len(valid_df) < 3: return
+    if len(valid_df) < 3: 
+        return
 
     sorted_df = valid_df.sort_values(by=length_col, ascending=False).copy()
-    sorted_df['status'] = 'Válido (Ignorado)' 
+    sorted_df['status'] = 'Valid (Ignored)' 
     
     lengths = sorted_df[length_col].tolist()
     indices = sorted_df.index.tolist() 
-    outliers_doble, outliers_salto = [], []
+    outliers_double, outliers_jump = [], []
     
     if len(lengths) >= 5:
         while len(lengths) > 2:
             c_max, n_max, c_med = lengths[0], lengths[1], np.median(lengths)
             if c_max > c_med * 2.0:
-                outliers_doble.append(indices.pop(0)); lengths.pop(0); continue
+                outliers_double.append(indices.pop(0)); lengths.pop(0); continue
             if (c_max - n_max) / n_max >= 0.05:
-                outliers_salto.append(indices.pop(0)); lengths.pop(0)
-            else: break 
+                outliers_jump.append(indices.pop(0)); lengths.pop(0)
+            else: 
+                break 
                 
-    sorted_df.loc[outliers_doble, 'status'] = 'Descartado (Pico > 2x Mediana)'
-    sorted_df.loc[outliers_salto, 'status'] = 'Descartado (Salto > 5%)'
+    sorted_df.loc[outliers_double, 'status'] = 'Rejected (Peak > 2x Median)'
+    sorted_df.loc[outliers_jump, 'status'] = 'Rejected (Jump > 5%)'
     
     used_indices = [indices[0]] if len(valid_df) < 20 else indices[:max(1, int(len(lengths) * 0.2))]
-    sorted_df.loc[used_indices, 'status'] = 'Seleccionado (Top 20% Promediado)'
+    sorted_df.loc[used_indices, 'status'] = 'Selected (Top 20% Averaged)'
     
     final_length = sorted_df.loc[used_indices, length_col].mean()
     gt_cm = valid_df['gt'].iloc[0]
@@ -714,46 +724,130 @@ def plot_smart_filter_explanation_pro(df, folder_code, track_id, length_col='fil
 
     valid_df = valid_df.merge(sorted_df[['status']], left_index=True, right_index=True)
 
+    # Detect invalid angle zones
+    valid_df['angle_out'] = (valid_df['elevation_deg'].abs() > angle_thr)
+
     sns.set_theme(style="whitegrid", context="paper", font_scale=1.1)
-    fig = plt.figure(figsize=(18, 10))
-    fig.suptitle(f"Disección Smart Aggregator - [Track: {track_str}]", fontsize=16, fontweight='bold', y=0.98)
+    fig = plt.figure(figsize=(20, 10))
+    fig.suptitle(f"Smart Aggregator Breakdown - [Track: {track_str}]", fontsize=16, fontweight='bold', y=0.98)
     
-    gs = fig.add_gridspec(3, 2, width_ratios=[1.3, 1], height_ratios=[2, 1, 1], hspace=0.1)
+    gs = fig.add_gridspec(3, 2, width_ratios=[1.3, 1], height_ratios=[2, 1, 1], hspace=0.25, wspace=0.3)
     
-    color_dict = {'Descartado (Pico > 2x Mediana)': '#d62728', 'Descartado (Salto > 5%)': '#ff7f0e', 'Seleccionado (Top 20% Promediado)': '#2ca02c', 'Válido (Ignorado)': '#7f7f7f'}
-    markers_dict = {'Descartado (Pico > 2x Mediana)': 'X', 'Descartado (Salto > 5%)': 'X', 'Seleccionado (Top 20% Promediado)': '*', 'Válido (Ignorado)': 'o'}
+    color_dict = {
+        'Rejected (Peak > 2x Median)': '#d62728',
+        'Rejected (Jump > 5%)': '#ff7f0e',
+        'Selected (Top 20% Averaged)': '#2ca02c',
+        'Valid (Ignored)': '#7f7f7f'
+    }
 
+    markers_dict = {
+        'Rejected (Peak > 2x Median)': 'X',
+        'Rejected (Jump > 5%)': 'X',
+        'Selected (Top 20% Averaged)': '*',
+        'Valid (Ignored)': 'o'
+    }
+
+    # Smaller points for valid measures
+    size_map = valid_df['status'].map(lambda s: 40 if s == 'Valid (Ignored)' else 120)
+
+    # --- 1. Temporal view ---
     ax1 = fig.add_subplot(gs[0, 0])
-    sns.scatterplot(data=valid_df, x='frame_num', y=length_col, hue='status', style='status', palette=color_dict, markers=markers_dict, s=150, ax=ax1, legend=False)
-    ax1.axhline(y=final_length, color='#2ca02c', linewidth=2.5, label=f'Medida Final ({final_length:.3f} m)')
-    if gt_m: ax1.axhline(y=gt_m, color='blue', linestyle='--', linewidth=2, label=f'GT ({gt_m:.3f} m)')
-    ax1.set_title("1. Vista Temporal", fontsize=13, fontweight='bold')
-    ax1.legend(loc='lower right', fontsize=10)
+    for i in range(len(valid_df)-1):
+        if valid_df['angle_out'].iloc[i]:
+            ax1.axvspan(valid_df['frame_num'].iloc[i],
+                        valid_df['frame_num'].iloc[i+1],
+                        color='red', alpha=0.08)
 
+    sns.scatterplot(
+        data=valid_df,
+        x='frame_num',
+        y=length_col,
+        hue='status',
+        style='status',
+        palette=color_dict,
+        markers=markers_dict,
+        s=size_map,
+        ax=ax1,
+        legend=False
+    )
+    ax1.axhline(y=final_length, color='#2ca02c', linewidth=2.5, label=f'Final Estimate ({final_length:.3f} m)')
+    if gt_m:
+        ax1.axhline(y=gt_m, color='blue', linestyle='--', linewidth=2, label=f'GT ({gt_m:.3f} m)')
+
+    ax1.set_title("1. Temporal View", fontsize=13, fontweight='bold')
+    ax1.set_ylabel("Length (m)")
+    ax1.legend(loc='upper center', fontsize=10, ncol=2)
+
+    # --- Aspect ratio ---
     ax_ar = fig.add_subplot(gs[1, 0], sharex=ax1)
+    for i in range(len(valid_df)-1):
+        if valid_df['angle_out'].iloc[i]:
+            ax_ar.axvspan(valid_df['frame_num'].iloc[i],
+                          valid_df['frame_num'].iloc[i+1],
+                          color='red', alpha=0.08)
     ax_ar.plot(valid_df['frame_num'], valid_df['aspect_ratio'], marker='^', color='purple')
-    ax_ar.axhline(y=ar_thr, color='black', linestyle=':', label=f'AR ({ar_thr})')
+    ax_ar.axhline(y=ar_thr, color='black', linestyle=':', label=f'AR Threshold ({ar_thr})')
+    ax_ar.set_title("Aspect Ratio", fontsize=12, fontweight='bold')
+    ax_ar.set_ylabel("Aspect Ratio")
+    ax_ar.set_xlabel("Frame Number")
     ax_ar.legend(loc='upper right', fontsize=9)
 
+    # --- Angle ---
     ax_ang = fig.add_subplot(gs[2, 0], sharex=ax1)
+    for i in range(len(valid_df)-1):
+        if valid_df['angle_out'].iloc[i]:
+            ax_ang.axvspan(valid_df['frame_num'].iloc[i],
+                           valid_df['frame_num'].iloc[i+1],
+                           color='red', alpha=0.08)
     ax_ang.plot(valid_df['frame_num'], valid_df['elevation_deg'], marker='v', color='brown')
     ax_ang.axhline(y=angle_thr, color='black', linestyle=':')
     ax_ang.axhline(y=-angle_thr, color='black', linestyle=':')
+    ax_ang.set_title("Elevation Angle (deg)", fontsize=12, fontweight='bold')
+    ax_ang.set_ylabel("Angle (deg)")
+    ax_ang.set_xlabel("Frame Number")
     ax_ang.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax_ang.legend([f'Angle Threshold ±{angle_thr}°'], loc='upper right', fontsize=9)
 
+    # --- 2. Algorithmic view (right side) ---
     ax2 = fig.add_subplot(gs[:, 1])
     sorted_df['rank'] = np.arange(1, len(sorted_df) + 1)
-    sns.scatterplot(data=sorted_df, x='rank', y=length_col, hue='status', style='status', palette=color_dict, markers=markers_dict, s=150, ax=ax2)
+    sorted_df['angle_out'] = valid_df['angle_out']
+
+    for i in range(len(sorted_df)-1):
+        if sorted_df['angle_out'].iloc[i]:
+            ax2.axvspan(sorted_df['rank'].iloc[i],
+                        sorted_df['rank'].iloc[i+1],
+                        color='red', alpha=0.08)
+
+    size_map_sorted = sorted_df['status'].map(lambda s: 40 if s == 'Valid (Ignored)' else 120)
+    sns.scatterplot(
+        data=sorted_df,
+        x='rank',
+        y=length_col,
+        hue='status',
+        style='status',
+        palette=color_dict,
+        markers=markers_dict,
+        s=size_map_sorted,
+        ax=ax2
+    )
     ax2.plot(sorted_df['rank'], sorted_df[length_col], color='gray', alpha=0.3)
     ax2.axhline(y=final_length, color='#2ca02c', linewidth=2.5)
-    if gt_m: ax2.axhline(y=gt_m, color='blue', linestyle='--', linewidth=2)
-    ax2.set_title("2. Vista Algorítmica", fontsize=13, fontweight='bold')
-    ax2.legend(loc='upper right', fontsize=10, title="Estado")
-    ax2.set_ylim(ax1.get_ylim())
-    
+    if gt_m:
+        ax2.axhline(y=gt_m, color='blue', linestyle='--', linewidth=2)
+    ax2.set_title("2. Algorithmic View", fontsize=13, fontweight='bold')
+    ax2.set_ylabel("Length (m)")
+    ax2.set_xlabel("Rank")
+    ax2.legend(loc='upper right', fontsize=10, title="Status")
+
+    # --- Zoom around GT ±2cm ---
+    if gt_m:
+        ax1.set_ylim(gt_m-0.02, gt_m+0.02)
+        ax2.set_ylim(gt_m-0.02, gt_m+0.02)
+
     plt.tight_layout()
     plt.show()
-
+    
 def plot_thresholds_interaction(df_base, ar_range=None, angles_to_test=None, optimal_ar=3,context=""):
     
     # Clean up false positives so they don't affect the graphs
