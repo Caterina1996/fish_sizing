@@ -414,21 +414,22 @@ class Fish3D(Fish2D):
         vis.destroy_window()
         
         return np.asarray(img)
-   
+    
     def filter_outliers_HDBSCAN_adaptive_plots(self, 
-                                     min_cluster_size=40, 
-                                     max_fish_thickness_meters=0.08,  # max fish thickness (adjustable)
-                                     debug_plot=True):
+                                                min_cluster_size=40, 
+                                                max_fish_thickness_meters=0.08,
+                                                debug_plot=True):
         import numpy as np
         import open3d as o3d
         import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
         import os
         from sklearn.decomposition import PCA
         import hdbscan
 
+        # --- Verificación inicial ---
         if self.pointcloud_raw is None or len(self.pointcloud_raw) < 50:
-            self.pointcloud_filtered = self.pointcloud_raw
-            self.colors_filtered = self.colors
+            self.pointcloud_filtered, self.colors_filtered = self.pointcloud_raw, self.colors
             self.pointcloud_size_ok = False
             return
 
@@ -436,230 +437,153 @@ class Fish3D(Fish2D):
         colors_raw = self.colors
 
         # =========================
-        # 1. SOR
+        # 1. SOR (Statistical Outlier Removal)
         # =========================
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(pts_raw[:, :3])
-        cl, ind_sor = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.5)
-
-        mask_sor = np.zeros(len(pts_raw), dtype=bool)
-        mask_sor[ind_sor] = True
-        pts_removed_sor = pts_raw[~mask_sor, :3]
-
-        pts = pts_raw[ind_sor]
-        xyz = pts[:, :3]
+        pcd_full = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pts_raw[:, :3]))
+        cl, ind_sor = pcd_full.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.5)
+        xyz_sor = pts_raw[ind_sor, :3]
 
         # =========================
-        # 2. HDBSCAN
+        # 2. HDBSCAN (Clustering)
         # =========================
         clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, allow_single_cluster=True)
-        labels = clusterer.fit_predict(xyz)
-
-        valid_labels = set(labels)
-        valid_labels.discard(-1)
+        labels = clusterer.fit_predict(xyz_sor)
+        valid_labels = set(labels); valid_labels.discard(-1)
 
         if not valid_labels:
-            self.pointcloud_filtered = pts
-            self.colors_filtered = colors_raw[ind_sor]
-            self.pointcloud_size_ok = False
+            self.pointcloud_filtered, self.pointcloud_size_ok = xyz_sor, False
             return
 
+        # =========================
+        # 3. PCA & Filtering (Sándwich)
+        # =========================
         largest_label = max(valid_labels, key=lambda l: np.sum(labels == l))
-        main_cluster = xyz[labels == largest_label]
+        main_cluster_pts = xyz_sor[labels == largest_label]
+        
+        pca = PCA(n_components=3).fit(main_cluster_pts)
+        thickness_vector = pca.components_[2] # C3: Eje de grosor
+        centroid = np.median(main_cluster_pts, axis=0)
 
-        # =========================
-        # 3. PCA
-        # =========================
-        pca = PCA(n_components=3)
-        pca.fit(main_cluster)
-
-        thickness_vector = pca.components_[2]
-        centroid = np.median(main_cluster, axis=0)
-
-        # =========================
-        # 4. Thickness filtering
-        # =========================
-        vecs = xyz - centroid
-        dist = np.abs(np.dot(vecs, thickness_vector))
+        # Filtrado por distancia al plano central
+        dist = np.abs(np.dot(xyz_sor - centroid, thickness_vector))
         half_thickness = max_fish_thickness_meters / 2
-
         mask_keep = dist < half_thickness
 
-        self.pointcloud_filtered = pts[mask_keep]
+        # Resultados finales
+        self.pointcloud_filtered = xyz_sor[mask_keep]
         self.colors_filtered = colors_raw[ind_sor][mask_keep]
         self.pointcloud_size_ok = np.sum(mask_keep) > 10
 
-        # =========================
-        # CAMERA (KEY PART)
-        # =========================
-        def get_camera(pca, centroid):
-            front = -(0.6 * pca.components_[1] + 0.4 * pca.components_[0])
-            up = pca.components_[2]
-            return front, centroid, up
-
-        def render(geoms, front, lookat, up, width=1400, height=1000):
+        # --- Render Helper (Fondo Blanco, Puntos visibles) ---
+        def quick_render(geoms, front, lookat, up, w=1400, h=1000, zoom=0.7):
             vis = o3d.visualization.Visualizer()
-            vis.create_window(visible=False, width=width, height=height)
-
-            for g in geoms:
-                vis.add_geometry(g)
-
+            vis.create_window(visible=False, width=w, height=h)
+            for g in geoms: vis.add_geometry(g)
+            opt = vis.get_render_option()
+            opt.background_color = np.array([1, 1, 1]) # Blanco
+            opt.point_size = 5.0                       # Grosor puntos subido a 5
             ctr = vis.get_view_control()
-            ctr.set_front(front)
-            ctr.set_lookat(lookat)
-            ctr.set_up(up)
-            ctr.set_zoom(0.7)
-
-            vis.poll_events()
-            vis.update_renderer()
-            img = vis.capture_screen_float_buffer(True)
+            ctr.set_front(front); ctr.set_lookat(lookat); ctr.set_up(up); ctr.set_zoom(zoom)
+            vis.poll_events(); vis.update_renderer()
+            img = np.asarray(vis.capture_screen_float_buffer(True))
             vis.destroy_window()
+            return img
 
-            return np.asarray(img)
 
+        # =========================
+        # 4. Debug Plots
+        # =========================
         if debug_plot:
+            out_dir = f"debug_fish_{self.fish_frame}"
+            os.makedirs(out_dir, exist_ok=True)
 
-            front, lookat, up = get_camera(pca, centroid)
-
-            # =========================
-            # GEOMETRIES
-            # =========================
-
-            # RAW
-            pcd_raw = o3d.geometry.PointCloud()
-            pcd_raw.points = o3d.utility.Vector3dVector(pts_raw[:, :3])
-            pcd_raw.paint_uniform_color([0.6, 0.6, 0.6])
-
-            # SOR
-            pcd_sor = o3d.geometry.PointCloud()
-            pcd_sor.points = o3d.utility.Vector3dVector(xyz)
-            pcd_sor.paint_uniform_color([0, 0, 1])
-
-            # KEPT
-            pcd_kept = o3d.geometry.PointCloud()
-            pcd_kept.points = o3d.utility.Vector3dVector(xyz[mask_keep])
-            pcd_kept.paint_uniform_color([0, 0, 1])
-
-            # REMOVED THICKNESS
-            pcd_red = o3d.geometry.PointCloud()
-            pcd_red.points = o3d.utility.Vector3dVector(xyz[~mask_keep])
-            pcd_red.paint_uniform_color([1, 0, 0])
-
-            # REMOVED SOR
-            pcd_orange = o3d.geometry.PointCloud()
-            if len(pts_removed_sor) > 0:
-                pcd_orange.points = o3d.utility.Vector3dVector(pts_removed_sor)
-                pcd_orange.paint_uniform_color([1, 0.5, 0])
-
-            # =========================
-            # PLANES (WIREFRAME)
-            # =========================
-            plane_size = max_fish_thickness_meters * 2
-            base_plane = np.array([
-                [-plane_size, -plane_size, 0],
-                [ plane_size, -plane_size, 0],
-                [ plane_size,  plane_size, 0],
-                [-plane_size,  plane_size, 0]
-            ])
-
-            def rot(v1, v2):
-                a, b = v1/np.linalg.norm(v1), v2/np.linalg.norm(v2)
-                v = np.cross(a, b)
-                c = np.dot(a, b)
-                s = np.linalg.norm(v)
-                if s == 0: return np.eye(3)
-                kmat = np.array([[0,-v[2],v[1]],[v[2],0,-v[0]],[-v[1],v[0],0]])
-                return np.eye(3) + kmat + kmat@kmat*((1-c)/(s**2))
-
-            R = rot(np.array([0,0,1]), thickness_vector)
-
+            # --- A. Generar Planos de Clipping (Wireframe verde) ---
             planes_wire = []
+            plane_size = max_fish_thickness_meters * 2
+            base_plane = np.array([[-plane_size, -plane_size, 0], [plane_size, -plane_size, 0], 
+                                   [plane_size, plane_size, 0], [-plane_size, plane_size, 0]])
+            
+            # Matriz de rotación de Z al vector thickness
+            v1, v2 = np.array([0,0,1]), thickness_vector
+            v = np.cross(v1, v2); c = np.dot(v1, v2); s = np.linalg.norm(v)
+            if s == 0: R_mat = np.eye(3)
+            else:
+                k = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+                R_mat = np.eye(3) + k + k@k * ((1 - c) / (s**2))
+
             for offset in [-half_thickness, half_thickness]:
-                pts_plane = base_plane @ R.T + centroid + thickness_vector * offset
+                pts_p = base_plane @ R_mat.T + centroid + thickness_vector * offset
                 mesh = o3d.geometry.TriangleMesh()
-                mesh.vertices = o3d.utility.Vector3dVector(pts_plane)
+                mesh.vertices = o3d.utility.Vector3dVector(pts_p)
                 mesh.triangles = o3d.utility.Vector3iVector([[0,1,2],[0,2,3]])
                 wire = o3d.geometry.LineSet.create_from_triangle_mesh(mesh)
                 wire.paint_uniform_color([0.2, 0.8, 0.2])
                 planes_wire.append(wire)
 
-            # =========================
-            # RENDER IMAGES
-            # =========================
-            img_raw = render([pcd_raw], front, lookat, up)
-            img_sor = render([pcd_sor], front, lookat, up)
-            img_clip = render([pcd_kept, pcd_red] + planes_wire, front, lookat, up)
-            img_final = render([pcd_kept], front, lookat, up)
-            img_summary = render([pcd_kept, pcd_red, pcd_orange] + planes_wire, front, lookat, up)
+            # --- B. Preparar Nubes y Ejes ---
+            # 1. Raw (Gris) y SOR (Azul)
+            pcd_raw = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pts_raw[:, :3])); pcd_raw.paint_uniform_color([0.5, 0.5, 0.5])
+            pcd_sor = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(xyz_sor)); pcd_sor.paint_uniform_color([0.5, 0.5, 0.8])
 
-            # -------------------------------
-            # FUNCTION FOR SAVING IMAGES
-            # -------------------------------
-            def save_image(img, path, title):
-                plt.figure(figsize=(12, 9))
-                plt.imshow(img)
-                plt.title(title, fontsize=16)
-                plt.axis('off')
-                plt.tight_layout()
-                plt.savefig(path, dpi=200)
-                plt.close()
+            # 2. Clusters (Colores tab20)
+            pcd_clusters = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(xyz_sor))
+            pcd_clusters.colors = o3d.utility.Vector3dVector(plt.get_cmap("tab20")(labels / (labels.max() if labels.max() > 0 else 1))[:, :3])
 
-            # -------------------------------
-            # CREATE OUTPUT FOLDER
-            # -------------------------------
-            out_dir = f"debug_fish_{self.track_id}"
-            os.makedirs(out_dir, exist_ok=True)
+            # 3. Clipping (Verde/Rojo)
+            pcd_k = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(self.pointcloud_filtered)); pcd_k.paint_uniform_color([0, 1, 0])
+            pcd_r = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(xyz_sor[~mask_keep])); pcd_r.paint_uniform_color([1, 0, 0])
 
-            # -------------------------------
-            # RENDER ALL IMAGES
-            # -------------------------------
-            front, lookat, up = get_camera(pca, centroid)
+            # 4. Ejes PCA Finos (RGB) --- ¡AQUÍ ESTÁN! ---
+            pcd_main = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(main_cluster_pts)); pcd_main.paint_uniform_color([0.6, 0.6, 0.6])
+            axis_len = np.max(pcd_main.get_axis_aligned_bounding_box().get_extent()) * 0.7
+            pca_lines = o3d.geometry.LineSet()
+            pca_lines.points = o3d.utility.Vector3dVector([centroid, 
+                                centroid + pca.components_[0]*axis_len,
+                                centroid + pca.components_[1]*axis_len,
+                                centroid + pca.components_[2]*axis_len])
+            pca_lines.lines = o3d.utility.Vector2iVector([[0,1], [0,2], [0,3]])
+            pca_lines.colors = o3d.utility.Vector3dVector([[1,0,0], [0,1,0], [0,0,1]]) # Rojo, Verde, Azul
 
-            img_raw = render([pcd_raw], front, lookat, up)
-            img_sor = render([pcd_sor], front, lookat, up)
-            img_clip = render([pcd_kept, pcd_red] + planes_wire, front, lookat, up)
-            img_final = render([pcd_kept], front, lookat, up)
-            img_summary = render([pcd_kept, pcd_red, pcd_orange] + planes_wire, front, lookat, up)
+            # 5. Eje C1 Largo estirado (Azul)
+            dists_c1 = np.dot(main_cluster_pts - centroid, pca.components_[0])
+            pcd_axis_long = o3d.geometry.LineSet()
+            pcd_axis_long.points = o3d.utility.Vector3dVector([centroid + np.min(dists_c1)*1.3*pca.components_[0], 
+                                                               centroid + np.max(dists_c1)*1.3*pca.components_[0]])
+            pcd_axis_long.lines = o3d.utility.Vector2iVector([[0, 1]]); pcd_axis_long.colors = o3d.utility.Vector3dVector([[0, 0, 1]])
 
-            # -------------------------------
-            # SAVE INDIVIDUAL STAGES
-            # -------------------------------
-            save_image(img_raw, f"{out_dir}/raw.png", "Raw Point Cloud")
-            save_image(img_sor, f"{out_dir}/after_sor.png", "After SOR")
-            save_image(img_clip, f"{out_dir}/clipping.png", "Clipping Stage")
-            save_image(img_final, f"{out_dir}/final.png", "Final Filtered")
-            # Calcular la cámara perpendicular al grosor
-            front_perp = thickness_vector          # mirar en la dirección del grosor
-            lookat_perp = centroid
-            up_perp = pca.components_[1]          # eje vertical del pez (head-tail axis como referencia)
+            # --- C. Definir Cámaras y Renders ---
+            f_iso = -(0.5*pca.components_[0] + 0.5*pca.components_[1] + 0.5*pca.components_[2])
+            
+            # VISTA "REBANADORA" (Para clipping):
+            # Casi paralelo a los planos para que se vean como líneas cortando al pez
+         
+            # Miramos a lo largo de la longitud y la altura del pez (paralelos a los planos).
+            # Le ponemos un minúsculo 0.05 al grosor para que no sea una línea matemática 1D y veas la perspectiva.
+            f_slice = -(0.8 * pca.components_[0] + 0.5 * pca.components_[1] + 0.05 * thickness_vector)
+            u_slice = thickness_vector # El grosor ahora es el eje vertical (arriba/abajo)
+            
+            f_perp = thickness_vector
+            u_std = pca.components_[1] # Usamos este 'up' de forma general (Eje C2)
 
-            # Renderizar la pointcloud filtrada final
-            img_filtered_perp = render([pcd_kept], front_perp, lookat_perp, up_perp)
+            plt.imsave(f"{out_dir}/1_raw.png", quick_render([pcd_raw], f_iso, centroid, u_std))
+            plt.imsave(f"{out_dir}/2_sor.png", quick_render([pcd_sor], f_iso, centroid, u_std))
+            plt.imsave(f"{out_dir}/3_clusters.png", quick_render([pcd_clusters], f_iso, centroid, u_std))
+            
+            # Clipping con vista "Rebanadora" y más zoom (0.6)
+            plt.imsave(f"{out_dir}/4_clipping.png", quick_render([pcd_k, pcd_r] + planes_wire, f_slice, centroid, u_slice, zoom=0.7))
+            # PCA con leyenda y ejes RGB
+            img_pca = quick_render([pcd_main, pca_lines], f_iso, centroid, u_std, w=1000, h=800)
+            plt.figure(figsize=(10, 8)); plt.imshow(img_pca)
+            plt.legend(handles=[mpatches.Patch(color='red', label='C1'), 
+                                mpatches.Patch(color='green', label='C2'), 
+                                mpatches.Patch(color='blue', label='C3')], loc='upper right')
+            plt.axis('off'); plt.savefig(f"{out_dir}/4b_pca_axes.png"); plt.close()
 
-            # Guardar
-            save_image(img_filtered_perp, f"{out_dir}/final_perpendicular.png", "Final Filtered (Perpendicular View)")
+            # Finales perpendiculares (corregido el u_perp)
+            plt.imsave(f"{out_dir}/5_final_verde.png", quick_render([pcd_k], f_perp, centroid, u_std))
+            plt.imsave(f"{out_dir}/6_final_axis.png", quick_render([pcd_k, pcd_axis_long], f_perp, centroid, u_std))
 
-            # -------------------------------
-            # SUMMARY IMAGE WITH LEGEND (OUTSIDE AXIS)
-            # -------------------------------
-            fig, ax = plt.subplots(figsize=(12, 9))
-            ax.imshow(img_summary)
-            ax.axis('off')
-
-            from matplotlib.patches import Patch
-            legend_elements = [
-                Patch(color='blue', label='Kept'),
-                Patch(color='red', label='Removed (Thickness)'),
-                Patch(color='orange', label='Removed (SOR)'),
-                Patch(color='green', label='Clipping Planes')
-            ]
-
-            # Leyenda fuera del axis para no tapar el pez
-            ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.02, 1), fontsize=14)
-
-            plt.tight_layout()
-            plt.savefig(f"{out_dir}/summary.png", dpi=200, bbox_inches='tight')
-            plt.close()
+        return
     
     def filter_outliers_HDBSCAN_adaptive_saltos_imnproved(self, min_cluster_size=20, z_jump_threshold_abs=0.03, debug_plot=False):
         pts = self.pointcloud_raw
