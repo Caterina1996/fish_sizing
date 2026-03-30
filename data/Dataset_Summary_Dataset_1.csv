@@ -1,0 +1,70 @@
+Dataset_ID,Bagfile_Name,Date,Dataset_Type,Image_Format,Duration_Sec,Num_Images_Left,Num_Images_Right,Frame_Rate_FPS,Size_GB,Fishes_Present
+Dataset 1,stereo_camera_images_2025-05-08-11-18-25_1_compressed.bag,2025_05_08,single_fish,Compressed,66.55,667,667,10.02,2.87,D_labrax_1 (N/Acm)
+Dataset 1,stereo_camera_images_2025-05-08-11-20-39_3_compressed.bag,2025_05_08,single_fish,Compressed,3.0,31,31,10.34,0.13,D_labrax_1 (N/Acm)
+Dataset 1,stereo_camera_images_2025-05-08-11-19-32_2_compressed.bag,2025_05_08,single_fish,Compressed,66.66,667,667,10.01,2.88,D_labrax_1 (N/Acm)
+Dataset 1,stereo_camera_images_2025-05-08-11-17-18_0_compressed.bag,2025_05_08,single_fish,Compressed,66.65,667,667,10.01,2.87,D_labrax_1 (N/Acm)
+Dataset 1,stereo_camera_images_2025-05-08-11-16-00_1_compressed.bag,2025_05_08,single_fish,Compressed,46.46,465,465,10.01,2.02,D_labrax_1 (N/Acm)
+Dataset 1,stereo_camera_images_2025-05-08-11-14-53_0_compressed.bag,2025_05_08,single_fish,Compressed,66.64,667,667,10.01,2.9,D_labrax_1 (N/Acm)
+Dataset 1,stereo_camera_images_2025-05-08-11-22-03_1_compressed.bag,2025_05_08,single_fish,Compressed,66.65,668,666,10.02,2.87,D_labrax_1 (N/Acm)
+Dataset 1,stereo_camera_images_2025-05-08-11-20-56_0_compressed.bag,2025_05_08,single_fish,Compressed,66.65,667,667,10.01,2.87,D_labrax_1 (N/Acm)
+Dataset 1,stereo_camera_images_2025-05-08-11-23-09_2_compressed.bag,2025_05_08,single_fish,Compressed,14.39,144,145,10.01,0.62,D_labrax_1 (N/Acm)
+Dataset 1,stereo_camera_images_2025-05-08-11-49-52_0_compressed.bag,2025_05_08,multiple_fish,Compressed,30.92,620,620,20.05,2.64,"D_labrax_2 (33.5cm), M_poutassou (30.0cm), M_poutassou_tape (33.5cm)"
+Dataset 1,stereo_camera_images_2025-05-08-11-59-57_0_compressed.bag,2025_05_08,multiple_fish,Compressed,30.92,620,619,20.05,2.64,"D_labrax_2 (33.5cm), M_poutassou (30.0cm), M_poutassou_tape (33.5cm)"
+Dataset 1,stereo_camera_images_2025-05-08-12-01-20_0_compressed.bag,2025_05_08,multiple_fish,Compressed,30.93,620,620,20.05,2.64,"D_labrax_2 (33.5cm), M_poutassou (30.0cm), M_poutassou_tape (33.5cm)"
+Dataset 1,stereo_camera_images_2025-05-08-11-42-15_1_compressed.bag,2025_05_08,multiple_fish,Compressed,1.33,40,20,30.03,0.13,D_labrax_2 (33.5cm)
+Dataset 1,stereo_camera_images_2025-05-08-11-41-45_0_compressed.bag,2025_05_08,multiple_fish,Compressed,29.61,890,445,30.06,2.87,D_labrax_2 (33.5cm)
+Dataset 1,stereo_camera_images_2025-05-08-11-37-20_1_compressed.bag,2025_05_08,multiple_fish,Compressed,27.45,412,413,15.01,1.77,"D_labrax_2 (33.5cm), M_poutassou (30.0cm)"
+Dataset 1,stereo_camera_images_2025-05-08-11-36-36_0_compressed.bag,2025_05_08,multiple_fish,Compressed,44.42,668,667,15.04,2.85,"D_labrax_2 (33.5cm), M_poutassou (30.0cm)"
+Dataset 1,stereo_camera_images_2025-05-08-12-00-39_0_compressed.bag,2025_05_08,multiple_fish,Compressed,30.93,620,620,20.05,2.65,"D_labrax_2 (33.5cm), M_poutassou (30.0cm), M_poutassou_tape (33.5cm)"
+Dataset 1,stereo_camera_images_2025-05-08-11-33-23_0_compressed.bag,2025_05_08,multiple_fish,Compressed,29.6,890,444,30.06,2.85,"D_labrax_2 (33.5cm), M_poutassou (30.0cm)"
+Dataset 1,stereo_camera_images_2025-05-08-11-33-52_1_compressed.bag,2025_05_08,multiple_fish,Compressed,19.91,599,299,30.08,1.91,"D_labrax_2 (33.5cm), M_poutassou (30.0cm)"
+Dataset 1,stereo_camera_images_2025-05-08-12-02-02_0_compressed.bag,2025_05_08,multiple_fish,Compressed,30.98,621,621,20.05,2.65,"D_labrax_2 (33.5cm), M_poutassou (30.0cm), M_poutassou_tape (33.5cm)"
+Dataset 1,stereo_camera_images_2025-05-08-11-48-15_0_compressed.bag,2025_05_08,multiple_fish,Compressed,30.88,310,310,10.04,1.32,"D_labrax_2 (33.5cm), M_poutassou (30.0cm), M_poutassou_tape (33.5cm)"
+Dataset 1,stereo_camera_images_2025-05-08-11-44-48_0_compressed.bag,2025_05_08,multiple_fish,Compressed,30.97,249,248,8.04,1.05,"D_labrax_2 (33.5cm), M_poutassou (30.0cm)"
+Dataset 1,stereo_camera_images_2025-05-08-11-30-34_0_compressed.bag,2025_05_08,multiple_fish,Compressed,33.32,667,667,20.02,2.84,"D_labrax_2 (33.5cm), M_poutassou (30.0cm)"
+Dataset 1,stereo_camera_images_2025-05-08-11-31-08_1_compressed.bag,2025_05_08,multiple_fish,Compressed,24.83,498,498,20.06,2.12,"D_labrax_2 (33.5cm), M_poutassou (30.0cm)"
+Dataset 1,stereo_camera_images_2025-05-08-11-57-59_0_compressed.bag,2025_05_08,multiple_fish,Compressed,30.91,465,465,15.04,1.99,"D_labrax_2 (33.5cm), M_poutassou (30.0cm), M_poutassou_tape (33.5cm)"
+Dataset 1,stereo_camera_images_2025-05-08-12-02-44_0_compressed.bag,2025_05_08,multiple_fish,Compressed,17.24,346,346,20.07,1.47,"D_labrax_2 (33.5cm), M_poutassou (30.0cm), M_poutassou_tape (33.5cm)"
+Dataset 1,stereo_camera_images_2025-05-08-11-29-49_2_compressed.bag,2025_05_08,multiple_fish,Compressed,33.12,664,664,20.05,2.84,"D_labrax_2 (33.5cm), M_poutassou (30.0cm)"
+Dataset 1,stereo_camera_images_2025-05-08-11-29-16_1_compressed.bag,2025_05_08,multiple_fish,Compressed,33.28,667,667,20.05,2.86,"D_labrax_2 (33.5cm), M_poutassou (30.0cm)"
+Dataset 1,stereo_camera_images_2025-05-08-11-28-42_0_compressed.bag,2025_05_08,multiple_fish,Compressed,33.32,668,666,20.05,2.85,"D_labrax_2 (33.5cm), M_poutassou (30.0cm)"
+Dataset 1,stereo_camera_images_2025-05-08-11-57-17_0_compressed.bag,2025_05_08,multiple_fish,Compressed,30.91,465,464,15.04,1.98,"D_labrax_2 (33.5cm), M_poutassou (30.0cm), M_poutassou_tape (33.5cm)"
+Dataset 1,stereo_camera_images_2024-11-12-11-37-10_0_compressed.bag,2024_11_12,single_fish,Compressed,120.91,485,485,4.01,2.08,D_labrax_0 (31.5cm)
+Dataset 1,stereo_camera_images_2024-11-12-11-00-27_0_compressed.bag,2024_11_12,single_fish,Compressed,78.69,316,316,4.02,1.4,D_labrax_0 (31.5cm)
+Dataset 1,stereo_camera_images_2024-11-12-10-48-44_0_compressed.bag,2024_11_12,single_fish,Compressed,166.61,667,667,4.0,2.97,D_labrax_0 (31.5cm)
+Dataset 1,stereo_camera_images_2024-11-12-10-51-31_1_compressed.bag,2024_11_12,single_fish,Compressed,137.89,552,553,4.0,2.48,D_labrax_0 (31.5cm)
+Dataset 1,stereo_camera_images_2024-11-12-11-10-51_0_compressed.bag,2024_11_12,single_fish,Compressed,120.9,485,485,4.01,2.1,D_labrax_0 (31.5cm)
+Dataset 1,stereo_camera_images_2024-11-12-10-58-20_0_compressed.bag,2024_11_12,single_fish,Compressed,120.91,485,485,4.01,2.15,D_labrax_0 (31.5cm)
+Dataset 1,stereo_camera_images_2024-11-12-11-08-39_0_compressed.bag,2024_11_12,single_fish,Compressed,120.9,485,485,4.01,2.1,D_labrax_0 (31.5cm)
+Dataset 1,stereo_camera_images_2024-11-12-10-44-11_0_compressed.bag,2024_11_12,single_fish,Compressed,105.67,423,424,4.0,1.98,D_labrax_0 (31.5cm)
+Dataset 1,stereo_camera_images_2024-11-12-10-54-07_0_compressed.bag,2024_11_12,single_fish,Compressed,120.9,484,485,4.0,2.14,D_labrax_0 (31.5cm)
+Dataset 1,stereo_camera_images_2024-11-28-12-57-51_0_compressed.bag,2024_11_28,single_fish,Compressed,39.46,158,159,4.0,0.53,S_scombrus (28.9cm)
+Dataset 1,stereo_camera_images_2024-11-28-12-52-36_0_compressed.bag,2024_11_28,single_fish,Compressed,120.91,484,485,4.0,1.98,S_scombrus (28.9cm)
+Dataset 1,stereo_camera_images_2024-11-28-13-07-39_0_compressed.bag,2024_11_28,single_fish,Compressed,41.97,169,169,4.03,0.7,S_scombrus (28.9cm)
+Dataset 1,stereo_camera_images_2024-11-28-13-02-27_0_compressed.bag,2024_11_28,single_fish,Compressed,120.66,484,484,4.01,1.99,S_scombrus (28.9cm)
+Dataset 1,stereo_camera_images_2024-11-28-13-04-39_0_compressed.bag,2024_11_28,single_fish,Compressed,34.48,138,138,4.0,0.57,S_scombrus (28.9cm)
+Dataset 1,stereo_camera_images_2024-11-28-12-58-48_0_compressed.bag,2024_11_28,single_fish,Compressed,120.65,483,484,4.0,1.98,S_scombrus (28.9cm)
+Dataset 1,stereo_camera_images_2024-11-28-12-57-00_0_compressed.bag,2024_11_28,single_fish,Compressed,38.97,157,157,4.03,0.65,S_scombrus (28.9cm)
+Dataset 1,stereo_camera_images_2024-11-28-13-05-27_0_compressed.bag,2024_11_28,single_fish,Compressed,120.9,484,485,4.0,1.99,S_scombrus (28.9cm)
+Dataset 1,stereo_camera_images_2024-11-28-13-09-20_0_compressed.bag,2024_11_28,single_fish,Compressed,42.96,172,173,4.0,0.67,S_scombrus (28.9cm)
+Dataset 1,stereo_camera_images_2024-11-28-13-12-31_0_compressed.bag,2024_11_28,single_fish,Compressed,120.9,485,484,4.01,1.92,S_scombrus (28.9cm)
+Dataset 1,stereo_camera_images_2024-11-28-13-01-16_0_compressed.bag,2024_11_28,single_fish,Compressed,59.45,238,239,4.0,0.83,S_scombrus (28.9cm)
+Dataset 1,stereo_camera_images_2024-11-28-12-54-48_0_compressed.bag,2024_11_28,single_fish,Compressed,120.9,485,485,4.01,1.98,S_scombrus (28.9cm)
+Dataset 1,stereo_camera_images_2024-11-28-13-08-34_0_compressed.bag,2024_11_28,single_fish,Compressed,32.98,133,133,4.03,0.48,S_scombrus (28.9cm)
+Dataset 1,stereo_camera_images_2024-11-28-13-10-19_0_compressed.bag,2024_11_28,multiple_fish,Compressed,120.65,484,484,4.01,1.93,Not found in GT
+Dataset 1,stereo_camera_images_2024-11-28-13-19-06_0_compressed.bag,2024_11_28,multiple_fish,Compressed,120.9,485,485,4.01,1.92,Not found in GT
+Dataset 1,stereo_camera_images_2024-11-28-13-21-17_0_compressed.bag,2024_11_28,multiple_fish,Compressed,120.9,485,485,4.01,1.92,Not found in GT
+Dataset 1,stereo_camera_images_2024-11-28-13-47-08_0_compressed.bag,2024_11_28,multiple_fish,Compressed,60.95,245,245,4.02,1.07,Not found in GT
+Dataset 1,stereo_camera_images_2024-11-28-13-39-00_0_compressed.bag,2024_11_28,multiple_fish,Compressed,120.91,485,485,4.01,2.13,S_scombrus (28.9cm)
+Dataset 1,stereo_camera_images_2024-11-28-13-41-12_0_compressed.bag,2024_11_28,multiple_fish,Compressed,65.7,264,264,4.02,1.16,"B_boops (21.6cm), S_scombrus (28.9cm)"
+Dataset 1,stereo_camera_images_2024-11-28-13-25-41_0_compressed.bag,2024_11_28,multiple_fish,Compressed,120.9,485,485,4.01,1.91,Not found in GT
+Dataset 1,stereo_camera_images_2024-11-28-13-23-29_0_compressed.bag,2024_11_28,multiple_fish,Compressed,120.9,485,485,4.01,1.9,Not found in GT
+Dataset 1,stereo_camera_images_2024-11-28-13-34-27_0_compressed.bag,2024_11_28,multiple_fish,Compressed,120.9,485,485,4.01,1.91,"B_boops (21.6cm), S_scombrus (28.9cm)"
+Dataset 1,stereo_camera_images_2024-11-28-13-32-16_0_compressed.bag,2024_11_28,multiple_fish,Compressed,120.65,484,484,4.01,1.9,"B_boops (21.6cm), S_scombrus (28.9cm)"
+Dataset 1,stereo_camera_images_2024-11-28-13-44-57_0_compressed.bag,2024_11_28,multiple_fish,Compressed,120.9,485,485,4.01,2.11,Not found in GT
+Dataset 1,stereo_camera_images_2024-11-28-13-36-49_0_compressed.bag,2024_11_28,multiple_fish,Compressed,120.65,483,484,4.0,2.12,"B_boops (21.6cm), S_scombrus (28.9cm)"
+Dataset 1,stereo_camera_images_2024-11-28-13-48-24_0_compressed.bag,2024_11_28,multiple_fish,Compressed,41.47,167,167,4.03,0.73,"B_boops (21.6cm), S_scombrus (28.9cm)"
+Dataset 1,stereo_camera_images_2024-11-28-13-27-52_0_compressed.bag,2024_11_28,multiple_fish,Compressed,120.91,485,485,4.01,1.92,"B_boops (21.6cm), S_scombrus (28.9cm)"
+Dataset 1,stereo_camera_images_2024-11-28-13-30-04_0_compressed.bag,2024_11_28,multiple_fish,Compressed,120.9,485,485,4.01,1.9,Not found in GT
+Dataset 1,stereo_camera_images_2024-11-28-13-16-54_0_compressed.bag,2024_11_28,multiple_fish,Compressed,120.91,485,484,4.01,1.93,"B_boops (21.6cm), S_scombrus (28.9cm)"
+Dataset 1,stereo_camera_images_2024-11-28-13-42-45_0_compressed.bag,2024_11_28,multiple_fish,Compressed,120.66,483,484,4.0,2.11,"B_boops (21.6cm), S_scombrus (28.9cm)"
