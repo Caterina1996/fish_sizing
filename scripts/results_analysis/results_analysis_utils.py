@@ -15,6 +15,97 @@ warnings.filterwarnings('ignore')
 # =====================================================================
 # FUNCIONES DE AGREGACIÓN
 # =====================================================================
+
+def load_and_filter_dataset(path, dataset_name,recalculate_failure_reason=False, aspect_ratio_thr=3.0, angle_thr=30.0, save=False):
+    if not path.exists():
+        print(f"⚠️ File not found: {path}")
+        return pd.DataFrame(), pd.DataFrame()
+        
+    df = pd.read_csv(path)
+    df['dataset'] = dataset_name
+    
+    # 0. Quitar los Ground Truth no válidos y los tracks huérfanos (-1)
+    df = df[df['gt'] > 0].copy()
+    df = df[df['track_id'] != -1].copy()
+    
+    if recalculate_failure_reason==True:
+        df = assign_failure_reasons(df, aspect_ratio_thr=aspect_ratio_thr, angle_thr=angle_thr)
+    
+    # Crear ID único por track
+    df['track_uid'] = df['dataset'] + "_" + df['video_day'].astype(str) + "_" + df['video_name'].astype(str) + "_" + df['track_id'].astype(str)
+    
+    total_initial_tracks = df['track_uid'].nunique()
+    
+    print(f"\n--- Processing {dataset_name} ---")
+    print(f"Total raw frames with valid GT: {len(df)}")
+    print(f"Total initial tracks: {total_initial_tracks}")
+    
+    # 1. Filtrado por frames
+    track_failures = df.groupby('track_uid').apply(track_failure_from_frames).rename('track_failure_reason')
+
+    measured_uids = track_failures[track_failures == 'measured'].index
+    
+    # Aquí ahora estamos 100% seguros de que 'measured' significa lo que nosotros queremos
+    df_measured = df[
+        (df['track_uid'].isin(measured_uids)) & 
+        (df['failure_reason'] == 'measured')].copy()
+    
+    tracks_not_measured = total_initial_tracks - len(measured_uids)
+    print(f"Frames belonging to 'measured' tracks: {len(df_measured)}")
+    print(f"📉 Tracks descartados por 'track_failure_from_frames': {tracks_not_measured}")
+    
+    if df_measured.empty:
+        print(f"❌ ERROR: Ningún track superó el filtro 'measured'.")
+        return pd.DataFrame(), df
+    
+    # 2. Aplicar smart agg    
+    track_metrics = df_measured.groupby('track_uid').apply(smart_aggregator).dropna(how='all')
+                
+    tracks_after_agg = len(track_metrics)
+    tracks_discarded_by_agg = len(measured_uids) - tracks_after_agg
+    print(f"📉 Tracks descartados por 'smart_aggregator': {tracks_discarded_by_agg}")
+    
+    if track_metrics.empty:
+        print(f"❌ ERROR: Todos los tracks fueron descartados por el aggregator.")
+        return pd.DataFrame(), df
+    
+    # Sacamos los IDs de los tracks que han sobrevivido al agregador
+    valid_final_uids = track_metrics.index.unique()
+    
+    # Los que estaban en 'measured_uids' pero NO en 'valid_final_uids' son los cortos
+    short_track_uids = set(measured_uids) - set(valid_final_uids)
+    
+    # En el dataframe crudo, cambiamos su estado de 'measured' a 'short_track'
+    mask_short = (df['track_uid'].isin(short_track_uids)) & (df['failure_reason'] == 'measured')
+    df.loc[mask_short, 'failure_reason'] = 'short_track'
+    # =================================================================
+    
+    # 3. Recuperar Metadata
+    cols_to_keep = ['dataset', 'scenario', 'video_day', 'video_name']
+    if 'especie_gt' in df_measured.columns:
+        cols_to_keep.append('especie_gt')
+    elif 'fish_id' in df_measured.columns:
+        cols_to_keep.append('fish_id')
+        
+    track_metadata = df_measured.groupby('track_uid').first()[cols_to_keep]
+    final_tracks = track_metrics.join(track_metadata).reset_index()
+    
+    # Porcentaje de error relativo
+    final_tracks['rel_error_perc'] = (final_tracks['abs_error_cm'] / final_tracks['gt_cm']) * 100
+    
+    success_rate = (len(final_tracks) / total_initial_tracks) * 100
+    print(f"✅ FINAL RESULT: {len(final_tracks)} independent FISH (tracks) successfully aggregated.")
+    print(f"📊 Success Rate: {success_rate:.2f}% ({len(final_tracks)}/{total_initial_tracks} tracks medidos con éxito)")
+    
+    if save:
+        # GUARDAR EL CSV DE ESTE DATASET
+        output_csv_path = path.parent / f"{dataset_name}_FINAL_aggregated_metrics.csv"
+        final_tracks.to_csv(output_csv_path, index=False)
+    
+    # Devolvemos TANTO el final como el RAW (para poder contar los totales luego)
+    return final_tracks, df
+
+
 def aggregate_results_from_root_new(root_dir, day_code, output_csv_path=None, results_foldername="corrected_results"):
     """
     Recursively searches ONLY for '*raw.csv' files. 
@@ -268,12 +359,10 @@ def inject_ground_truth(df_raw, gt_dict, measures_dict, drop_unlabeled=False):
 # =====================================================================
 
 def assign_failure_reasons(df, aspect_ratio_thr=3.0, angle_thr=20.0):
-    
     """
     Calcula la causa de fallo de manera rápida (vectorizada).
     Evalúa los umbrales estrictos en vivo, sobrescribiendo el estado original.
     """
-  
     df = df.copy()
 
     c_not_fish = df["gt"] == -100
@@ -281,15 +370,25 @@ def assign_failure_reasons(df, aspect_ratio_thr=3.0, angle_thr=20.0):
     c_overlap  = df["does_overlap"]
     c_ar       = df["aspect_ratio"] < aspect_ratio_thr
     c_3d       = df["is_3D_complete"] == False
+    
+    # # Manejo seguro por si en algún csv antiguo no existe is_3D_complete
+    # c_3d = (df["is_3D_complete"] == False) if "is_3D_complete" in df.columns else pd.Series(False, index=df.index)
 
     if "elevation_deg" in df.columns and angle_thr is not None:
         c_angle = df["elevation_deg"].abs() > angle_thr
     else:
         c_angle = pd.Series(False, index=df.index)
 
+    c_bad_cloud = pd.Series(False, index=df.index)
+    if "pointcloud_size_ok" in df.columns and "fish_3d_ok" in df.columns:
+        # Usamos ~ (NOT) para detectar cuando son Falsos
+        c_bad_cloud = (~df["pointcloud_size_ok"].astype(bool)) | (~df["fish_3d_ok"].astype(bool))
+
+    # 3. Éxito
     c_measured = df["filtered_length"] > 0
 
-    conds = [c_not_fish, c_borders, c_overlap, c_ar, c_angle, c_3d, c_measured]
+    # 4. ORDEN DE PRIORIDAD EN LA CASCADA
+    conds = [c_not_fish, c_borders, c_overlap, c_ar, c_angle, c_3d, c_bad_cloud, c_measured]
 
     choices = [
         "not_a_fish",
@@ -298,6 +397,7 @@ def assign_failure_reasons(df, aspect_ratio_thr=3.0, angle_thr=20.0):
         "aspect_ratio_fail",
         "angle_fail",
         "incomplete_3D",
+        "bad_pointcloud",  
         "measured"
     ]
 
@@ -305,12 +405,13 @@ def assign_failure_reasons(df, aspect_ratio_thr=3.0, angle_thr=20.0):
 
     return df
 
+
 # =====================================================================
 # GRÁFICOS Y ANÁLISIS
 # =====================================================================
 
 def track_failure_from_frames_0(track_df):
-    failure_priority = ["measured", "incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail", "other"]
+    failure_priority = ["measured", "incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail","short_track","other"]
     
     
     if "measured" in track_df["failure_reason"].values:
@@ -320,15 +421,30 @@ def track_failure_from_frames_0(track_df):
             return reason
     return "other"
 
-def track_failure_from_frames(track_df):
-    if "measured" in track_df["failure_reason"].values:
-        return "measured"
-    fallos_reales = track_df[track_df["failure_reason"] != "other"]["failure_reason"]
+def get_primary_track_failure(track_df):
+    # 1️⃣ Filtro implacable: Si el tracker lo perdió antes de 6 frames, 
+    # la causa raíz SIEMPRE es que el track es demasiado corto.
+    if len(track_df) <= min_frames:
+        return 'short_track'
+    
+    # 2️⃣ Si el track es suficientemente largo, miramos si consiguió el mínimo de medidas buenas
+    measured_count = (track_df['failure_reason'] == 'measured').sum()
+    if measured_count > min_frames:
+        return 'measured'
+    
+    # 3️⃣ Si es un track largo pero no llegó al mínimo de medidas buenas,
+    # buscamos en qué falló principalmente (quitando los frames buenos aislados)
+    bad_frames = track_df[track_df['failure_reason'] != 'measured']
+    
+    # Filtramos 'other' para no enmascarar errores físicos (bordes, ángulos, etc.)
+    fallos_reales = bad_frames[bad_frames['failure_reason'] != 'other']['failure_reason']
     
     if not fallos_reales.empty:
-        # .mode() devuelve los valores más repetidos. Cogemos el primero [0] en caso de empate
-        return fallos_reales.mode()[0] 
-    return "other"
+        return fallos_reales.mode()[0]
+        
+    # Si llegamos aquí, es que todos los fallos eran literalmente 'other'
+    return 'other'
+
 
 def plot_tracks_failure_distribution(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0, 
                                      show_global=True, figsize_video=(12,6), figsize_global=(5,5),
@@ -338,8 +454,10 @@ def plot_tracks_failure_distribution(df_raw_agg_input, aspect_ratio_thr=3.0, ang
     # Clasificación en vivo
     df_raw_agg = assign_failure_reasons(df_raw_agg, aspect_ratio_thr, angle_thr)
     
-    failure_priority = ["measured", "incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail", "other"]
-    plot_colors = ["#4CAF50", "#FFB74D", "#FF8A65", "#E57373", "#BA68C8", "#F06292", "#90A4AE"]
+    failure_priority = ["measured", "incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail","short_track" ,"other"]
+    plot_colors = ["#4CAF50", "#FFB74D", "#FF8A65", "#E57373", "#BA68C8", "#F06292","#3d8f95", "#90A4AE"]
+    
+    
 
     track_failures = df_raw_agg.groupby("unique_track").apply(track_failure_from_frames).reset_index()
     track_failures.columns = ["unique_track", "track_failure_reason"]
@@ -402,8 +520,8 @@ def plot_frame_failures(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0,
     # Clasificación en vivo
     df_raw_agg = assign_failure_reasons(df_raw_agg, aspect_ratio_thr, angle_thr)
 
-    failure_priority = ["measured", "incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail", "other"]
-    plot_colors = ["#4CAF50", "#FFB74D", "#FF8A65", "#E57373", "#BA68C8", "#F06292", "#90A4AE"]
+    failure_priority = ["measured", "incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail","short_track" ,"other"]
+    plot_colors = ["#4CAF50", "#FFB74D", "#FF8A65", "#E57373", "#BA68C8", "#F06292","#3d8f95", "#90A4AE"]
 
     stacked_df = df_raw_agg.groupby(["source_folder", "failure_reason"]).size().unstack(fill_value=0)
     for col in failure_priority:
@@ -842,9 +960,17 @@ def plot_smart_filter_explanation_pro(
 
     # --- Zoom around GT ±2cm ---
     if gt_m:
-        ax1.set_ylim(gt_m-0.02, gt_m+0.02)
-        ax2.set_ylim(gt_m-0.02, gt_m+0.02)
-
+        
+        # Ajustar el límite Y basándose en los datos reales para no perder los outliers
+        y_max = valid_df[length_col].max()
+        y_min = min(valid_df[length_col].min(), gt_m if gt_m else valid_df[length_col].min())
+        
+        # Le damos un 5% de margen por arriba y por abajo
+        margin = (y_max - y_min) * 0.05
+        
+        ax1.set_ylim(y_min - margin, y_max + margin)
+        ax2.set_ylim(y_min - margin, y_max + margin)
+        
     plt.tight_layout()
     plt.show()
     
@@ -855,7 +981,7 @@ def plot_thresholds_interaction(df_base, ar_range=None, angles_to_test=None, opt
         df_base = df_base[df_base['failure_reason'] != 'not_a_fish'].copy()
         
     if ar_range is None: ar_range = np.arange(1.0, 5, 0.2)
-    if angles_to_test is None: angles_to_test = [15, 20, 25, 30, 60, 90]
+    if angles_to_test is None: angles_to_test = [15, 20, 25, 30,35,40,45, 60, 90]
         
     def evaluate_thresholds(df, ar_thr, angle_thr):
         df_filt = df[(df['aspect_ratio'] >= ar_thr) & (df['elevation_deg'].abs() <= angle_thr)]
@@ -931,26 +1057,33 @@ def plot_thresholds_interaction(df_base, ar_range=None, angles_to_test=None, opt
     
     return df_interaction
     
-  
-
 def plot_track_evolution_detailed(df, folder_code, track_id, ar_thr=3, angle_thr=20.0, dev_median=1.5, zoom_margin_cm=5.0):
     folder_str, track_str = str(folder_code), str(track_id)
     mask = (df['source_folder'].astype(str) == folder_str) & (df['track_id'].astype(str) == track_str)
     fish_data = df[mask].copy()
     
-    if fish_data.empty: return
+    if fish_data.empty: 
+        print(f"⚠️ No data found for Folder: {folder_str}, Track: {track_str}")
+        return
         
+    # Extraer numero de frame para el eje X
     fish_data['frame_num'] = fish_data['frame_id'].astype(str).str.extract(r'(\d+)').astype(float).astype(int)
     fish_data = fish_data.sort_values(by='frame_num')
+    
     gt_cm = fish_data['gt'].iloc[0]
     gt_m = gt_cm / 100.0 if gt_cm > 0 else None
     
-    perfect_mask = fish_data['is_3D_complete'].fillna(False).astype(bool) & (fish_data['aspect_ratio'].fillna(0) >= ar_thr) & (fish_data['elevation_deg'].fillna(90).abs() <= angle_thr)
+    # Máscara de frames que superan los filtros estrictos
+    perfect_mask = (fish_data['is_3D_complete'].fillna(False).astype(bool)) & \
+                   (fish_data['aspect_ratio'].fillna(0) >= ar_thr) & \
+                   (fish_data['elevation_deg'].fillna(90).abs() <= angle_thr)
+    
     bad_frames = fish_data[~perfect_mask]['frame_num']
     valid_df = fish_data[perfect_mask & (fish_data['filtered_length'] > 0)].copy()
     
     outliers_idx, used_indices, ignored_indices, final_calculated_length = [], [], [], np.nan
     
+    # Simular la lógica de tu smart_aggregator
     if not valid_df.empty:
         lengths, idxs = zip(*sorted(zip(valid_df['filtered_length'], valid_df.index), key=lambda x: x[0], reverse=True))
         lengths, idxs = list(lengths), list(idxs)
@@ -965,37 +1098,83 @@ def plot_track_evolution_detailed(df, folder_code, track_id, ar_thr=3, angle_thr
                     
         used_indices = [idxs[0]] if len(valid_df) < 20 else idxs[:max(1, int(len(lengths) * 0.2))]
         ignored_indices = [i for i in idxs if i not in used_indices]
-        if used_indices: final_calculated_length = valid_df.loc[used_indices, 'filtered_length'].mean()
+        if used_indices: 
+            final_calculated_length = valid_df.loc[used_indices, 'filtered_length'].mean()
 
     measurement_fail_frames = fish_data[fish_data['filtered_length'] == -1]['frame_num']
     fish_data[['raw_length', 'filtered_length']] = fish_data[['raw_length', 'filtered_length']].replace(-1, np.nan)
 
-    fig, axes = plt.subplots(4, 1, figsize=(14, 14), sharex=True, gridspec_kw={'height_ratios': [1.5, 2, 1, 1]})
+    # ==========================================
+    # CREAR LA FIGURA Y LOS PANELES
+    # ==========================================
+    fig, axes = plt.subplots(4, 1, figsize=(15, 16), sharex=True, gridspec_kw={'height_ratios': [1.5, 2, 1, 1]})
+    fig.suptitle(f"Track Evolution Analysis | Folder: {folder_str} | Track ID: {track_str}", fontsize=18, fontweight='bold', y=0.98)
     
-    for ax in axes[:2]:
-        ax.plot(fish_data['frame_num'], fish_data['raw_length'], marker='.', color='orange', alpha=0.3)
-        ax.plot(fish_data['frame_num'], fish_data['filtered_length'], color='gray', alpha=0.3)
-        if ignored_indices: ax.scatter(valid_df.loc[ignored_indices, 'frame_num'], valid_df.loc[ignored_indices, 'filtered_length'], color='#1f77b4', marker='s', zorder=3)
-        if outliers_idx: ax.scatter(valid_df.loc[outliers_idx, 'frame_num'], valid_df.loc[outliers_idx, 'filtered_length'], color='#ff7f0e', marker='X', s=100, zorder=4)
+    # --- PANELES 0 y 1: Longitud (Global y Zoom) ---
+    for i, ax in enumerate(axes[:2]):
+        ax.plot(fish_data['frame_num'], fish_data['raw_length'], marker='.', color='orange', alpha=0.4, label='Raw Length (No smoothing)')
+        ax.plot(fish_data['frame_num'], fish_data['filtered_length'], color='gray', alpha=0.6, label='Filtered Length (Smoothed)')
+        
+        if ignored_indices: 
+            ax.scatter(valid_df.loc[ignored_indices, 'frame_num'], valid_df.loc[ignored_indices, 'filtered_length'], color='#1f77b4', marker='s', zorder=3, label='Valid Frame (Ignored by aggregator)')
+        if outliers_idx: 
+            ax.scatter(valid_df.loc[outliers_idx, 'frame_num'], valid_df.loc[outliers_idx, 'filtered_length'], color='#ff7f0e', marker='X', s=100, zorder=4, label='Aggregator Outlier (Discarded peak)')
         if used_indices: 
-            ax.scatter(valid_df.loc[used_indices, 'frame_num'], valid_df.loc[used_indices, 'filtered_length'], color='#2ca02c', marker='*', s=200, edgecolor='black', zorder=5)
-            ax.axhline(y=final_calculated_length, color='#2ca02c', linewidth=2.5)
-        if not measurement_fail_frames.empty: ax.scatter(measurement_fail_frames, [0.02] * len(measurement_fail_frames), color='red', marker='X', s=100)
-        if gt_m: ax.axhline(y=gt_m, color='green', linestyle='--', linewidth=2.5)
+            ax.scatter(valid_df.loc[used_indices, 'frame_num'], valid_df.loc[used_indices, 'filtered_length'], color='#2ca02c', marker='*', s=200, edgecolor='black', zorder=5, label='Averaged Frame (Used for final sizing)')
+            ax.axhline(y=final_calculated_length, color='#2ca02c', linewidth=2.5, label=f'Final Calculated Length ({final_calculated_length*100:.1f} cm)')
+        
+        if not measurement_fail_frames.empty: 
+            ax.scatter(measurement_fail_frames, [fish_data['filtered_length'].min()]*len(measurement_fail_frames), color='red', marker='X', s=100, label='Failed Measure (-1)')
+        if gt_m: 
+            ax.axhline(y=gt_m, color='green', linestyle='--', linewidth=2.5, label=f'Ground Truth ({gt_cm:.1f} cm)')
 
-    axes[0].set_title("Global View")
-    axes[1].set_title("Zoomed View")
+        ax.set_ylabel("Fish Length (m)", fontsize=12, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+
+    axes[0].set_title("1. Global View (All length detections)", fontsize=14, fontweight='bold')
+    axes[1].set_title(f"2. Zoomed View (±{zoom_margin_cm} cm margin around measurement)", fontsize=14, fontweight='bold')
     
-    axes[2].plot(fish_data['frame_num'], fish_data['aspect_ratio'], marker='^', color='purple')
-    axes[2].axhline(y=ar_thr, color='black', linestyle=':')
+    # Aplicar zoom al panel 1
+    zoom_m = zoom_margin_cm / 100.0
+    if gt_m:
+        axes[1].set_ylim(gt_m - zoom_m, gt_m + zoom_m)
+    elif not np.isnan(final_calculated_length):
+        axes[1].set_ylim(final_calculated_length - zoom_m, final_calculated_length + zoom_m)
+
+    # --- PANEL 2: Aspect Ratio ---
+    axes[2].set_title("3. Bounding Box Aspect Ratio", fontsize=14, fontweight='bold')
+    axes[2].plot(fish_data['frame_num'], fish_data['aspect_ratio'], marker='^', color='purple', label='Frame Aspect Ratio')
+    axes[2].axhline(y=ar_thr, color='black', linestyle=':', linewidth=2, label=f'Min Threshold ({ar_thr})')
+    axes[2].set_ylabel("Aspect Ratio", fontsize=12, fontweight='bold')
+    axes[2].grid(True, alpha=0.3)
     
-    axes[3].plot(fish_data['frame_num'], fish_data['elevation_deg'], marker='v', color='brown')
-    axes[3].axhline(y=angle_thr, color='black', linestyle=':')
-    axes[3].axhline(y=-angle_thr, color='black', linestyle=':')
+    # --- PANEL 3: Z-Angle (Elevation) ---
+    axes[3].set_title("4. Fish Posture (Z-Angle)", fontsize=14, fontweight='bold')
+    axes[3].plot(fish_data['frame_num'], fish_data['elevation_deg'], marker='v', color='brown', label='Frame Elevation Angle')
+    axes[3].axhline(y=angle_thr, color='black', linestyle=':', linewidth=2, label=f'Max Threshold (±{angle_thr}º)')
+    axes[3].axhline(y=-angle_thr, color='black', linestyle=':', linewidth=2)
+    axes[3].set_ylabel("Angle (º)", fontsize=12, fontweight='bold')
+    axes[3].set_xlabel("Video Frame Number", fontsize=14, fontweight='bold') # ETIQUETA EJE X AQUI ABAJO
+    axes[3].grid(True, alpha=0.3)
     
+    # --- DIBUJAR LAS BANDAS ROJAS DE DESCARTE Y AÑADIRLAS A LAS LEYENDAS ---
+    # Dibujamos las bandas en todos los gráficos
     for ax in axes:
-        for bf in bad_frames: ax.axvspan(bf - 0.5, bf + 0.5, color='red', alpha=0.15)
-            
+        for bf in bad_frames: 
+            ax.axvspan(bf - 0.5, bf + 0.5, color='red', alpha=0.10)
+
+    # Truco para añadir la banda roja a la leyenda (creamos un 'Patch' manual)
+    red_patch = Patch(color='red', alpha=0.10, label='Discarded Frame (Failed Filters)')
+    
+    # Añadimos las leyendas (ubicadas fuera del gráfico a la derecha para no tapar datos)
+    handles, labels = axes[1].get_legend_handles_labels()
+    handles.append(red_patch)
+    labels.append('Discarded Frame (Failed Filters)')
+    axes[1].legend(handles=handles, labels=labels, loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize=10, title="Length Legend", title_fontsize='11')
+    
+    axes[2].legend(loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize=10)
+    axes[3].legend(loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize=10)
+
     plt.tight_layout()
     plt.show()
     
@@ -1069,6 +1248,256 @@ def plot_final_error_analysis(df_filtered, top_n_outliers=15, figsize=(18, 14), 
     axes[1, 1].set_title(f'4. Top {top_n_outliers} Outliers (Tracks con Mayor Error)', fontweight='bold')
     axes[1, 1].set_xlabel('Error Absoluto (cm)')
     axes[1, 1].set_ylabel('ID Único del Track')
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_error_vs_geometry(df, ar_thr=3.0, angle_thr=30.0, context_label="Global", max_error_cm=None):
+    """
+    Plotea la relación entre el Error Absoluto y las variables geométricas (Z-Angle y Aspect Ratio).
+    Muestra una vista cruda (con ruido) y una vista purgada (aislando variables).
+    """
+    # 1. Preparar datos base (quitamos NaNs de las columnas que necesitamos)
+    df_plot = df.dropna(subset=['abs_error_cm', 'aspect_ratio', 'elevation_deg']).copy()
+    if df_plot.empty:
+        print(f"⚠️ No data to plot geometry errors for {context_label}")
+        return
+
+    # Usamos el ángulo en valor absoluto (desviación del centro)
+    df_plot['abs_elevation_deg'] = df_plot['elevation_deg'].abs()
+
+    # Si no se define un máximo para el eje Y, calculamos uno seguro (percentil 95 + margen)
+    # para que los outliers extremos no aplasten la gráfica visualmente.
+    if max_error_cm is None:
+        max_error_cm = df_plot['abs_error_cm'].quantile(0.95) * 1.5
+
+    # 2. Preparar los DataFrames filtrados (aislando variables)
+    # Filtro estructural: quitamos ruido que no tiene que ver con la geometría fina
+    structural_noise = ['not_a_fish', 'borders', 'overlap', 'incomplete_3D']
+    valid_structure_mask = ~df_plot['failure_reason'].isin(structural_noise)
+
+    # DataFrame puro para Ángulo: Estructura OK + Aspect Ratio OK
+    df_clean_angle = df_plot[valid_structure_mask & (df_plot['aspect_ratio'] >= ar_thr)]
+    
+    # DataFrame puro para Aspect Ratio: Estructura OK + Ángulo OK
+    df_clean_ar = df_plot[valid_structure_mask & (df_plot['abs_elevation_deg'] <= angle_thr)]
+
+    # 3. Dibujar la Figura 2x2
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    fig.suptitle(f"Error vs Geometry Analysis | {context_label}", fontsize=18, fontweight='bold', y=0.98)
+
+    # -------------------------------------------------------------------
+    # FILA 1: DATOS CRUDOS (RAW) - Con todo el ruido
+    # -------------------------------------------------------------------
+    # 1.1 Ángulo (Raw)
+    sns.scatterplot(data=df_plot, x='abs_elevation_deg', y='abs_error_cm', alpha=0.1, ax=axes[0,0], color='gray')
+    sns.regplot(data=df_plot, x='abs_elevation_deg', y='abs_error_cm', scatter=False, ax=axes[0,0], color='black', line_kws={'linestyle':'--'})
+    axes[0,0].axvline(angle_thr, color='red', linestyle='--', linewidth=2, label=f'Threshold ({angle_thr}º)')
+    axes[0,0].set_title("1A. Raw Data: Error vs Z-Angle", fontsize=14, fontweight='bold')
+    axes[0,0].set_ylabel("Absolute Error (cm)")
+    axes[0,0].set_ylim(-0.5, max_error_cm)
+    axes[0,0].legend()
+
+    # 1.2 Aspect Ratio (Raw)
+    sns.scatterplot(data=df_plot, x='aspect_ratio', y='abs_error_cm', alpha=0.1, ax=axes[0,1], color='gray')
+    sns.regplot(data=df_plot, x='aspect_ratio', y='abs_error_cm', scatter=False, ax=axes[0,1], color='black', line_kws={'linestyle':'--'})
+    axes[0,1].axvline(ar_thr, color='red', linestyle='--', linewidth=2, label=f'Threshold ({ar_thr})')
+    axes[0,1].set_title("1B. Raw Data: Error vs Aspect Ratio", fontsize=14, fontweight='bold')
+    axes[0,1].set_ylabel("Absolute Error (cm)")
+    axes[0,1].set_ylim(-0.5, max_error_cm)
+    axes[0,1].set_xlim(0, df_plot['aspect_ratio'].quantile(0.99))
+    axes[0,1].legend()
+
+    # -------------------------------------------------------------------
+    # FILA 2: DATOS FILTRADOS (ISOLATED) - El efecto real de la variable
+    # -------------------------------------------------------------------
+    # 2.1 Ángulo (Clean)
+    sns.scatterplot(data=df_clean_angle, x='abs_elevation_deg', y='abs_error_cm', alpha=0.2, ax=axes[1,0], color='#3498DB')
+    sns.regplot(data=df_clean_angle, x='abs_elevation_deg', y='abs_error_cm', scatter=False, ax=axes[1,0], color='black', line_kws={'linestyle':'--'})
+    axes[1,0].axvline(angle_thr, color='red', linestyle='--', linewidth=2)
+    axes[1,0].set_title("2A. Isolated Variable: Error vs Z-Angle\n(Only frames with valid AR and no structural noise)", fontsize=13, fontweight='bold')
+    axes[1,0].set_xlabel("Absolute Z-Angle (º)")
+    axes[1,0].set_ylabel("Absolute Error (cm)")
+    axes[1,0].set_ylim(-0.5, max_error_cm)
+
+    # 2.2 Aspect Ratio (Clean)
+    sns.scatterplot(data=df_clean_ar, x='aspect_ratio', y='abs_error_cm', alpha=0.2, ax=axes[1,1], color='#9B59B6')
+    sns.regplot(data=df_clean_ar, x='aspect_ratio', y='abs_error_cm', scatter=False, ax=axes[1,1], color='black', line_kws={'linestyle':'--'})
+    axes[1,1].axvline(ar_thr, color='red', linestyle='--', linewidth=2)
+    axes[1,1].set_title("2B. Isolated Variable: Error vs Aspect Ratio\n(Only frames with valid Angle and no structural noise)", fontsize=13, fontweight='bold')
+    axes[1,1].set_xlabel("Aspect Ratio")
+    axes[1,1].set_ylabel("Absolute Error (cm)")
+    axes[1,1].set_ylim(-0.5, max_error_cm)
+    axes[1,1].set_xlim(0, df_plot['aspect_ratio'].quantile(0.99))
+
+    plt.tight_layout()
+    plt.show()
+    
+
+def plot_error_vs_track_length(df_raw, df_final, context_label="Global", min_frames_thr=5, target_error_cm=1.0):
+    """
+    Plotea el error del track en función de cuántos frames válidos tiene.
+    Utiliza el error REAL calculado por el smart_aggregator para los tracks válidos.
+    """
+    # 1. Contar cuántos frames válidos tiene cada track desde el RAW
+    valid_frames = df_raw[df_raw['failure_reason'].isin(['measured', 'short_track'])].copy()
+
+    if valid_frames.empty:
+        print(f"⚠️ No valid frames to plot track length analysis for {context_label}")
+        return
+
+    # Sacamos solo el conteo (n_frames)
+    track_counts = valid_frames.groupby('track_uid').size().reset_index(name='n_frames')
+
+    # 2. TRACKS ACEPTADOS: Usamos el error real e inteligente de df_final
+    if df_final is not None and not df_final.empty:
+        accepted_errors = df_final[['track_uid', 'abs_error_cm']].copy()
+        accepted_errors.rename(columns={'abs_error_cm': 'final_error'}, inplace=True)
+        # Cruzamos para tener n_frames y el error inteligente
+        accepted_stats = pd.merge(
+            track_counts[track_counts['n_frames'] > min_frames_thr],
+            accepted_errors, 
+            on='track_uid', 
+            how='inner'
+        )
+    else:
+        accepted_stats = pd.DataFrame(columns=['track_uid', 'n_frames', 'final_error'])
+
+    # 3. TRACKS RECHAZADOS (Short Tracks): Usamos la media bruta de sus pocos frames
+    # Solo para demostrar visualmente por qué se descartaron
+    rejected_uids = track_counts[track_counts['n_frames'] <= min_frames_thr]['track_uid']
+    rejected_frames = valid_frames[valid_frames['track_uid'].isin(rejected_uids)]
+    
+    if not rejected_frames.empty:
+        rejected_errors = rejected_frames.groupby('track_uid')['abs_error_cm'].mean().reset_index()
+        rejected_errors.rename(columns={'abs_error_cm': 'final_error'}, inplace=True)
+        rejected_stats = pd.merge(
+            track_counts[track_counts['n_frames'] <= min_frames_thr],
+            rejected_errors, 
+            on='track_uid', 
+            how='inner'
+        )
+    else:
+        rejected_stats = pd.DataFrame(columns=['track_uid', 'n_frames', 'final_error'])
+
+    # Juntamos ambos para poder trazar la línea de tendencia general
+    all_stats = pd.concat([accepted_stats, rejected_stats], ignore_index=True)
+
+    if all_stats.empty:
+        return
+
+    # 4. Dibujar la Gráfica
+    plt.figure(figsize=(12, 7))
+    sns.set_theme(style="whitegrid", context="paper", font_scale=1.2)
+
+    # Plot de los rechazados (Rojo/Gris)
+    if not rejected_stats.empty:
+        plt.scatter(
+            rejected_stats['n_frames'], rejected_stats['final_error'], 
+            color='#e74c3c', alpha=0.6, s=60, edgecolor='black', linewidth=0.5,
+            label=f'Discarded by Aggregator (≤ {min_frames_thr} frames)'
+        )
+    
+    # Plot de los aceptados (Verde)
+    if not accepted_stats.empty:
+        plt.scatter(
+            accepted_stats['n_frames'], accepted_stats['final_error'], 
+            color='#2ecc71', alpha=0.7, s=80, edgecolor='black', linewidth=0.8,
+            label=f'Accepted Tracks (Smart Aggregation)'
+        )
+
+    # Añadir línea de tendencia
+    sns.regplot(
+        data=all_stats, x='n_frames', y='final_error', 
+        scatter=False, color='black', logx=True, truncate=False,
+        line_kws={'linestyle':'--', 'linewidth': 2}, label='Error Trend'
+    )
+
+    # Líneas de referencia
+    plt.axvline(x=min_frames_thr + 0.5, color='gray', linestyle=':', linewidth=2.5, label=f'Aggregator Threshold')
+    plt.axhline(y=target_error_cm, color='blue', linestyle='-.', linewidth=2, alpha=0.6, label=f'Target Error ({target_error_cm} cm)')
+
+    # Estética y Etiquetas
+    plt.title(f"Impact of Tracking Length on Final Measurement Accuracy | {context_label}", fontsize=16, fontweight='bold', pad=15)
+    plt.xlabel("Number of Valid Frames in Track", fontsize=14, fontweight='bold')
+    plt.ylabel("Track Final Absolute Error (cm)", fontsize=14, fontweight='bold')
+    
+    # Ajustar el eje Y y X
+    max_y = all_stats['final_error'].quantile(0.95) * 1.5
+    if max_y < target_error_cm * 2: max_y = target_error_cm * 3
+    plt.ylim(-0.5, max_y)
+    plt.xlim(0, all_stats['n_frames'].max() + 2)
+
+    plt.legend(loc='upper right', frameon=True, shadow=True)
+    plt.tight_layout()
+    plt.show()
+    
+    
+
+
+def plot_track_length_histogram(df_raw, min_frames_thr=5, context_label="Global"):
+    """
+    Dibuja un histograma apilado mostrando la distribución de la longitud de los tracks
+    (Total de frames detectados) y qué proporción de ellos fue Aceptada vs Rechazada.
+    """
+    if df_raw.empty:
+        return
+        
+    # 1. Calcular estadísticas por Track
+    # - total_frames: Cuántas veces apareció el pez en el tracker (longitud bruta)
+    # - valid_frames: Cuántos de esos frames superaron los filtros geométricos
+    track_stats = df_raw.groupby('track_uid').agg(
+        total_frames=('frame_id', 'count'),
+        valid_frames=('failure_reason', lambda x: x.isin(['measured', 'short_track']).sum())
+    ).reset_index()
+
+    # 2. Etiquetar si el track sobrevivió o no al smart_aggregator
+    # Sobrevive si tiene estrictamente más frames válidos que el umbral
+    label_accepted = f'Accepted (> {min_frames_thr} valid frames)'
+    label_rejected = f'Rejected (≤ {min_frames_thr} valid frames)'
+    
+    track_stats['Status'] = np.where(
+        track_stats['valid_frames'] > min_frames_thr,
+        label_accepted,
+        label_rejected
+    )
+
+    # 3. Dibujar el Histograma Apilado
+    plt.figure(figsize=(12, 6))
+    sns.set_theme(style="whitegrid", context="paper", font_scale=1.2)
+
+    # Definir colores (Verde para aceptados, Rojo apagado para rechazados)
+    palette = {
+        label_accepted: '#2ecc71',
+        label_rejected: '#e74c3c'
+    }
+
+    # Dibujamos el histograma. discrete=True fuerza a que cada número entero (1,2,3...) tenga su barra
+    sns.histplot(
+        data=track_stats,
+        x='total_frames',
+        hue='Status',
+        multiple='stack',
+        palette=palette,
+        discrete=True,
+        edgecolor='black',
+        alpha=0.85
+    )
+
+    # Estética y Textos
+    plt.title(f"Track Survival Rate based on Total Tracking Length | {context_label}", fontsize=15, fontweight='bold', pad=15)
+    plt.xlabel("Total Frames in Track (Tracker detections)", fontsize=13, fontweight='bold')
+    plt.ylabel("Number of Tracks", fontsize=13, fontweight='bold')
+
+    # Ajustar el eje X para que no se estropee si hay UN track de 300 frames que aplasta el gráfico
+    # Cortamos el eje X en el percentil 98%
+    max_x_val = int(track_stats['total_frames'].quantile(0.98))
+    # Nos aseguramos de dar al menos 20 de margen
+    plt.xlim(0, max(20, max_x_val)) 
+
+    # Mejorar la leyenda
+    sns.move_legend(plt.gca(), "upper right", title='Aggregator Decision', frameon=True)
 
     plt.tight_layout()
     plt.show()
