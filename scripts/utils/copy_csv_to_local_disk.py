@@ -22,7 +22,7 @@ def copy_results_locally(src_dir, dest_dir):
 
         # Buscamos la carpeta 'results' cuyo padre sea 'results_article_basic_nou'
         # if root_path.name == "corrected_results" and root_path.parent.name == "":
-        if root_path.name == "results":
+        if root_path.name == "corrected_results":
             
             target_file = "all_fish_info_raw.csv"
             
@@ -73,8 +73,8 @@ def copy_results_locally(src_dir, dest_dir):
 
 def main():
     parser = argparse.ArgumentParser(description="Exporta todos los CSVs filtrados a una carpeta local conservando la estructura.")
-    parser.add_argument("--src", "-s", default="/media/slimbook/easystore1/results_fish_sizing/seleccio_article/lanty1/2025_08_21/single_fish/", help="Ruta base del disco externo")
-    parser.add_argument("--dest", "-d", default="//home/slimbook/fish_sizing/ARTICLE/DATASET_2/single_fish/", help="Ruta de la carpeta local de destino")
+    parser.add_argument("--src", "-s", default="//home/slimbook/results_fish_sizing/multiple_fish/2024_11_28/", help="Ruta base del disco externo")
+    parser.add_argument("--dest", "-d", default="//home/slimbook/fish_sizing/ARTICLE/DATASET_1/2024_11_28/multiple_fish/", help="Ruta de la carpeta local de destino")
     args = parser.parse_args()
 
     if not os.path.exists(args.src):

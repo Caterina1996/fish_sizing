@@ -105,6 +105,7 @@ class FishSizer():
                 # A) Filtrado y Medición 3D
                 current_fish_3d.filter_outliers_HDBSCAN_adaptive(debug_plot=False)
                 # current_fish_3d.filter_outliers_HDBSCAN_adaptive() -> NAH
+                # current_fish_3d.filter_outliers_HDBSCAN_adaptive_plots()
 
                 current_fish_3d.get_distance_camera_fish()
 

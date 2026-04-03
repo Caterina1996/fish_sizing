@@ -421,7 +421,7 @@ def track_failure_from_frames_0(track_df):
             return reason
     return "other"
 
-def get_primary_track_failure(track_df):
+def track_failure_from_frames(track_df,min_frames=5):
     # 1️⃣ Filtro implacable: Si el tracker lo perdió antes de 6 frames, 
     # la causa raíz SIEMPRE es que el track es demasiado corto.
     if len(track_df) <= min_frames:
@@ -991,21 +991,20 @@ def plot_thresholds_interaction(df_base, ar_range=None, angles_to_test=None, opt
         df_agg = df_filt.groupby(['video_day', 'source_folder', 'track_id']).apply(smart_aggregator)
         
         if df_agg.empty: return np.nan, 0, 0
-
-        if 'abs_error_cm' not in df_agg.columns:
-            # Buscamos cómo se llaman tus columnas de GT y Longitud en este momento
-            gt_col = 'gt' if 'gt' in df_agg.columns else ('gt_cm' if 'gt_cm' in df_agg.columns else None)
-            len_col = 'calculated_length_cm' if 'calculated_length_cm' in df_agg.columns else ('filtered_length' if 'filtered_length' in df_agg.columns else None)
-            
-            if gt_col and len_col:
-                # Si usas 'filtered_length' (metros), multiplicamos por 100. Si ya son cm, directo.
-                if len_col == 'filtered_length':
-                    df_agg['abs_error_cm'] = abs((df_agg[len_col] * 100) - df_agg[gt_col])
-                else:
-                    df_agg['abs_error_cm'] = abs(df_agg[len_col] - df_agg[gt_col])
+        
+        # Buscamos cómo se llaman tus columnas de GT y Longitud en este momento
+        gt_col = 'gt' if 'gt' in df_agg.columns else ('gt_cm' if 'gt_cm' in df_agg.columns else None)
+        len_col = 'calculated_length_cm' if 'calculated_length_cm' in df_agg.columns else ('filtered_length' if 'filtered_length' in df_agg.columns else None)
+        
+        if gt_col and len_col:
+            # Si usas 'filtered_length' (metros), multiplicamos por 100. Si ya son cm, directo.
+            if len_col == 'filtered_length':
+                df_agg['abs_error_cm'] = abs((df_agg[len_col] * 100) - df_agg[gt_col])
             else:
-                # Si no encuentra las columnas, devuelve NaN para no romper el bucle
-                return np.nan, len(df_filt), len(df_agg)
+                df_agg['abs_error_cm'] = abs(df_agg[len_col] - df_agg[gt_col])
+        else:
+            # Si no encuentra las columnas, devuelve NaN para no romper el bucle
+            return np.nan, len(df_filt), len(df_agg)
 
         
         df_agg = df_agg.dropna(subset=['abs_error_cm'])

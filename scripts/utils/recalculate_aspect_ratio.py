@@ -108,8 +108,8 @@ def process_single_folder(folder_path, results_dir):
 
 def main():
     parser = argparse.ArgumentParser(description="Wrapper para corregir el Aspect Ratio en múltiples carpetas de un dataset.")
-    parser.add_argument("--parent_dir", "-p", type=str, default="/media/slimbook/easystore1/results_fish_sizing/seleccio_article/2025_05_08/multiple_peixos/", help="Carpeta padre que contiene todas las subcarpetas")
-    parser.add_argument("--results_dir", "-r", type=str, default="results", help="Subcarpeta donde se encuentra el CSV (ej: 'results' o 'results_article_basic_nou/results')")
+    parser.add_argument("--parent_dir", "-p", type=str, default="//home/slimbook/results_fish_sizing/multiple_fish/2024_11_28/", help="Carpeta padre que contiene todas las subcarpetas")
+    parser.add_argument("--results_dir", "-r", type=str, default="corrected_results", help="Subcarpeta donde se encuentra el CSV (ej: 'results' o 'results_article_basic_nou/results')")
     
     args = parser.parse_args()
     

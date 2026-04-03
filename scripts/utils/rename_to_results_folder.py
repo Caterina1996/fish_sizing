@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 # Cambia esto por la ruta a tu carpeta principal
-ROOT_DIR = Path("//home/slimbook/fish_sizing/ARTICLE/DATASET_2/2025_08_21/") 
+ROOT_DIR = Path("//home/slimbook/fish_sizing/ARTICLE/DATASET_2/") 
 
 
 print(f"🔍 Buscando carpetas 'corrected_results' en: {ROOT_DIR}\n")

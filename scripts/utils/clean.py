@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 # Cambia esto por la ruta a tu carpeta principal (ej: '/ruta/a/2024_11_28')
-ROOT_DIR = Path("//home/slimbook/fish_sizing/ARTICLE/DATASET_1/2024_11_28/") 
+ROOT_DIR = Path("//home/slimbook/fish_sizing/ARTICLE/DATASET_1/2025_05_08/multiple_fish/") 
 day_code = ROOT_DIR.name # Extrae automáticamente '2024_11_28'
 
 # Busca todos los .csv dentro de cualquier carpeta llamada 'corrected_results'
