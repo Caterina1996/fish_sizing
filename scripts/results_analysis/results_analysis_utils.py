@@ -13,8 +13,66 @@ import matplotlib.lines as mlines
 warnings.filterwarnings('ignore')
 
 # =====================================================================
-# FUNCIONES DE AGREGACIÓN
+# READ CSV RESULTS AND GENERATE PANDAS DFs AND AGG CSVS. CREATE THE RESULTS DATASET
 # =====================================================================
+
+def aggregate_results_from_root_new(root_dir, day_code, output_csv_path=None, results_foldername="results"):
+    """
+    Recursively searches ONLY for '*raw.csv' files. 
+    Smartly extracts the video name directly from the filename, making it immune to folder structure changes.
+    """
+    root_dir = Path(root_dir)
+    pattern = f"**/{results_foldername}/*raw.csv"
+    cprint(f"🔍 Buscando datos RAW en: {root_dir}", "cyan")
+
+    result_files = list(root_dir.rglob(pattern))
+
+    if not result_files:
+        cprint(f"❌ No se encontraron archivos '*raw.csv'.", "red")
+        return pd.DataFrame()
+
+    cprint(f"📂 Encontrados {len(result_files)} archivos de resultados crudos.", "green")
+    all_dfs = []
+
+    for filepath in result_files:
+        try:
+            # filepath.parts 
+            # Ej multi: ... / 13_14_42 / 13-14-43_0 / corrected_results / archivo.csv
+            # Ej single: ... / 10_48_44 / 0 / results_article_basic / corrected_results / archivo.csv
+            
+            parent_folder = filepath.parts[-3] # La carpeta justo encima de 'corrected_results'
+            
+            if "results" in parent_folder.lower():
+                folder_name = filepath.parts[-5]
+                sub_id = filepath.parts[-4]
+                video_name = f"{folder_name}_{sub_id}"
+            else:
+                video_name = parent_folder
+            
+            df = pd.read_csv(filepath)
+            
+            if not df.empty:
+                df['video_day'] = day_code
+                df['video_name'] = video_name
+                df['source_folder'] = video_name # TODO: Delete column
+                all_dfs.append(df)
+                
+        except Exception as e:
+            cprint(f"   ❌ Error reading {filepath}: {e}", "red")
+
+    if not all_dfs:
+        return pd.DataFrame()
+
+    agg_df = pd.concat(all_dfs, ignore_index=True)
+
+    # Reordenar columnas
+    context_cols = ["video_day", "source_folder", "video_name"]
+    other_cols = [c for c in agg_df.columns if c not in context_cols]
+    agg_df = agg_df[context_cols + other_cols]
+
+    cprint(f"\n📊 TOTAL AGREGADO: {len(agg_df)} líneas de datos.", "magenta", attrs=["bold"])
+    return agg_df
+
 
 def load_and_filter_dataset(path, dataset_name,recalculate_failure_reason=False, aspect_ratio_thr=3.0, angle_thr=30.0, save=False):
     if not path.exists():
@@ -90,8 +148,8 @@ def load_and_filter_dataset(path, dataset_name,recalculate_failure_reason=False,
     track_metadata = df_measured.groupby('track_uid').first()[cols_to_keep]
     final_tracks = track_metrics.join(track_metadata).reset_index()
     
-    # Porcentaje de error relativo
-    final_tracks['rel_error_perc'] = (final_tracks['abs_error_cm'] / final_tracks['gt_cm']) * 100
+    # Porcentaje de error relativo -> Esto ahora está en la otra función
+    # final_tracks['rel_error_perc'] = (final_tracks['abs_error_cm'] / final_tracks['gt_cm']) * 100
     
     success_rate = (len(final_tracks) / total_initial_tracks) * 100
     print(f"✅ FINAL RESULT: {len(final_tracks)} independent FISH (tracks) successfully aggregated.")
@@ -106,164 +164,6 @@ def load_and_filter_dataset(path, dataset_name,recalculate_failure_reason=False,
     return final_tracks, df
 
 
-def aggregate_results_from_root_new(root_dir, day_code, output_csv_path=None, results_foldername="corrected_results"):
-    """
-    Recursively searches ONLY for '*raw.csv' files. 
-    Smartly extracts the video name directly from the filename, making it immune to folder structure changes.
-    """
-    root_dir = Path(root_dir)
-    pattern = f"**/{results_foldername}/*raw.csv"
-    cprint(f"🔍 Buscando datos RAW en: {root_dir}", "cyan")
-
-    result_files = list(root_dir.rglob(pattern))
-
-    if not result_files:
-        cprint(f"❌ No se encontraron archivos '*raw.csv'.", "red")
-        return pd.DataFrame()
-
-    cprint(f"📂 Encontrados {len(result_files)} archivos de resultados crudos.", "green")
-    all_dfs = []
-
-    for filepath in result_files:
-        try:
-            # filepath.parts contiene toda la ruta separada
-            # Ej multi: ... / 13_14_42 / 13-14-43_0 / corrected_results / archivo.csv
-            # Ej single: ... / 10_48_44 / 0 / results_article_basic / corrected_results / archivo.csv
-            
-            parent_folder = filepath.parts[-3] # La carpeta justo encima de 'corrected_results'
-            
-            # Si el parent folder es "results_article..." (pasa en single_fish)
-            if "results" in parent_folder.lower():
-                # Cogemos las dos carpetas por encima (Ej: 10_48_44 y 0)
-                folder_name = filepath.parts[-5]
-                sub_id = filepath.parts[-4]
-                video_name = f"{folder_name}_{sub_id}"
-            else:
-                # Es multiple_fish, el parent_folder es exactamente la llave del GT (Ej: 13-14-43_0)
-                video_name = parent_folder
-            
-            df = pd.read_csv(filepath)
-            
-            if not df.empty:
-                df['video_day'] = day_code
-                df['video_name'] = video_name
-                df['source_folder'] = video_name 
-                all_dfs.append(df)
-                
-        except Exception as e:
-            cprint(f"   ❌ Error leyendo {filepath}: {e}", "red")
-
-    if not all_dfs:
-        return pd.DataFrame()
-
-    agg_df = pd.concat(all_dfs, ignore_index=True)
-
-    # Reordenar columnas
-    context_cols = ["video_day", "source_folder", "video_name"]
-    other_cols = [c for c in agg_df.columns if c not in context_cols]
-    agg_df = agg_df[context_cols + other_cols]
-
-    cprint(f"\n📊 TOTAL AGREGADO: {len(agg_df)} líneas de datos.", "magenta", attrs=["bold"])
-    return agg_df
-
-
-def aggregate_all_results(output_base_dir, day_code=""):
-    """
-    Busca recursivamente todos los csv de resultados y genera una agregación global.
-    """
-    cprint(f"🔍 Buscando resultados en: {output_base_dir}", "cyan")
-    result_files = list(Path(output_base_dir).rglob("all_fish_info_raw.csv"))
-    
-    if not result_files:
-        cprint("❌ No se encontraron archivos 'all_fish_info_raw.csv'.", "red")
-        return
-
-    cprint(f"📂 Encontrados {len(result_files)} archivos de resultados.", "green")
-    all_dfs = []
-    
-    for csv_path in result_files:
-        video_name = csv_path.parent.parent.name
-        df = pd.read_csv(csv_path)
-        
-        if not df.empty:
-            df['source_folder'] = video_name
-            df["video_day"] = day_code
-            all_dfs.append(df)
-            cprint(f"   ✅ Cargado: {video_name} ({len(df)} detecciones)", "white")
-        else:
-            cprint(f"   ⚠️ Vacío: {video_name}", "yellow")
-
-    if not all_dfs:
-        cprint("❗ No hay datos válidos para agregar.", "yellow")
-        return pd.DataFrame()
-
-    agg_df = pd.concat(all_dfs, ignore_index=True)
-    save_path = os.path.join(output_base_dir, "agg_all_fish_results.csv")
-    agg_df.to_csv(save_path, index=False)
-    
-    cprint(f"\n📊 TOTAL AGREGADO: {len(agg_df)} líneas de datos.", "magenta", attrs=["bold"])
-    cprint(f"💾 Guardado en: {save_path}", "green")
-    
-    return agg_df
-
-def aggregate_results_from_root(root_dir, day_code, output_csv_path=None, results_foldername="results", csv_name="all_fish_info_raw.csv", gt=None):
-    """
-    Busca recursivamente todos los csv dentro de carpetas 'results' sin importar su nivel de profundidad.
-    """
-    root_dir = Path(root_dir)
-    pattern = f"**/{results_foldername}/{csv_name}"
-    cprint(f"🔍 Buscando datos RAW en: {root_dir}", "cyan")
-
-    result_files = list(root_dir.rglob(pattern))
-
-    if not result_files:
-        cprint(f"❌ No se encontraron archivos '{csv_name}'.", "red")
-        return pd.DataFrame()
-
-    cprint(f"📂 Encontrados {len(result_files)} archivos de resultados.", "green")
-    all_dfs = []
-
-    for filepath in result_files:
-        try:
-            video_name = filepath.parent.parent.name
-            rel_path = filepath.relative_to(root_dir)
-            source_folder = str(rel_path.parent.parent).replace(os.sep, "_") 
-            
-            df = pd.read_csv(filepath)
-            
-            if not df.empty:
-                df['video_day'] = day_code
-                df['source_folder'] = source_folder 
-                df['video_name'] = video_name       
-                all_dfs.append(df)
-            else:
-                cprint(f"   ⚠️ Vacío: {video_name}", "yellow")
-                
-        except Exception as e:
-            cprint(f"   ❌ Error leyendo {filepath}: {e}", "red")
-
-    if not all_dfs:
-        return pd.DataFrame()
-
-    agg_df = pd.concat(all_dfs, ignore_index=True)
-
-    if gt is not None:
-        agg_df["gt"] = gt
-        if "filtered_length" in agg_df.columns:
-            agg_df["abs_error_cm"] = abs(agg_df["filtered_length"] * 100 - agg_df["gt"])
-
-    context_cols = ["video_day", "source_folder", "video_name"]
-    other_cols = [c for c in agg_df.columns if c not in context_cols]
-    agg_df = agg_df[context_cols + other_cols]
-
-    if output_csv_path is None: output_csv_path = root_dir
-        
-    output_path = Path(output_csv_path) / f"{day_code}_raw_aggregated.csv"
-    os.makedirs(output_path.parent, exist_ok=True)
-    agg_df.to_csv(output_path, index=False)
-
-    cprint(f"\n📊 TOTAL AGREGADO: {len(agg_df)} líneas de datos.", "magenta", attrs=["bold"])
-    return agg_df
 
 
 ######################################################################33
@@ -316,12 +216,7 @@ def inject_ground_truth(df_raw, gt_dict, measures_dict, drop_unlabeled=False):
     
     # 5. Crear el ID único ANTES de filtrar para poder contar los tracks
     df['unique_track'] = df['video_day'].astype(str) + "/" + df['video_name'].astype(str) + "/" + df['track_id'].astype(str)
-    
-    # 6. Filtrar los NO etiquetados (Opcional)
-    if drop_unlabeled:
-        df = df[df["gt"].notna()].copy()
-        cprint(f"   🗑️ Se han eliminado los tracks sin etiquetar (drop_unlabeled=True).", "magenta")
-    
+        
     # 1. Sacamos los nombres exactos de los tracks huérfanos usando .unique()
     lista_tracks_sin_gt = df[df['gt'].isna()]['unique_track'].unique().tolist()
     
@@ -355,13 +250,13 @@ def inject_ground_truth(df_raw, gt_dict, measures_dict, drop_unlabeled=False):
 
 
 # =====================================================================
-# ⚡ CLASIFICADOR VECTORIZADO DINÁMICO (Reemplaza a classify_failure)
+#  CLASSIFY MEASURES
 # =====================================================================
 
-def assign_failure_reasons(df, aspect_ratio_thr=3.0, angle_thr=20.0):
+def assign_failure_reasons(df, aspect_ratio_thr=3.0, angle_thr=30.0):
     """
-    Calcula la causa de fallo de manera rápida (vectorizada).
-    Evalúa los umbrales estrictos en vivo, sobrescribiendo el estado original.
+    Calculates failure reason of measures (vectorizada).
+    Evaluation of geometrical constrains and logic conditions
     """
     df = df.copy()
 
@@ -370,36 +265,34 @@ def assign_failure_reasons(df, aspect_ratio_thr=3.0, angle_thr=20.0):
     c_overlap  = df["does_overlap"]
     c_ar       = df["aspect_ratio"] < aspect_ratio_thr
     c_3d       = df["is_3D_complete"] == False
-    
-    # # Manejo seguro por si en algún csv antiguo no existe is_3D_complete
-    # c_3d = (df["is_3D_complete"] == False) if "is_3D_complete" in df.columns else pd.Series(False, index=df.index)
-
-    if "elevation_deg" in df.columns and angle_thr is not None:
-        c_angle = df["elevation_deg"].abs() > angle_thr
-    else:
-        c_angle = pd.Series(False, index=df.index)
-
-    c_bad_cloud = pd.Series(False, index=df.index)
-    if "pointcloud_size_ok" in df.columns and "fish_3d_ok" in df.columns:
-        # Usamos ~ (NOT) para detectar cuando son Falsos
-        c_bad_cloud = (~df["pointcloud_size_ok"].astype(bool)) | (~df["fish_3d_ok"].astype(bool))
+    c_angle = df["elevation_deg"].abs() > angle_thr
+    c_bad_cloud = (~df["pointcloud_size_ok"].astype(bool)) | (~df["fish_3d_ok"].astype(bool))
 
     # 3. Éxito
     c_measured = df["filtered_length"] > 0
 
-    # 4. ORDEN DE PRIORIDAD EN LA CASCADA
-    conds = [c_not_fish, c_borders, c_overlap, c_ar, c_angle, c_3d, c_bad_cloud, c_measured]
+    conds = [
+        c_not_fish, 
+        c_borders, 
+        c_3d, 
+        c_bad_cloud, 
+        c_overlap, 
+        c_ar, 
+        c_angle, 
+        c_measured
+    ]
 
     choices = [
         "not_a_fish",
-        "borders",
-        "overlap",
+        "borders",      
+        "incomplete_3D",       
+        "bad_pointcloud", 
+        "overlap",      
         "aspect_ratio_fail",
         "angle_fail",
-        "incomplete_3D",
-        "bad_pointcloud",  
         "measured"
     ]
+    
 
     df["failure_reason"] = np.select(conds, choices, default="other")
 
@@ -410,24 +303,14 @@ def assign_failure_reasons(df, aspect_ratio_thr=3.0, angle_thr=20.0):
 # GRÁFICOS Y ANÁLISIS
 # =====================================================================
 
-def track_failure_from_frames_0(track_df):
-    failure_priority = ["measured", "incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail","short_track","other"]
-    
-    
-    if "measured" in track_df["failure_reason"].values:
-        return "measured"
-    for reason in failure_priority[1:]:
-        if reason in track_df["failure_reason"].values:
-            return reason
-    return "other"
-
 def track_failure_from_frames(track_df,min_frames=5):
     # 1️⃣ Filtro implacable: Si el tracker lo perdió antes de 6 frames, 
     # la causa raíz SIEMPRE es que el track es demasiado corto.
+        
     if len(track_df) <= min_frames:
         return 'short_track'
     
-    # 2️⃣ Si el track es suficientemente largo, miramos si consiguió el mínimo de medidas buenas
+    # 2️⃣ Si el track es suficientemente largo, miramos si consiguió el mínimo de medidas buenas -> HAy que corregir 
     measured_count = (track_df['failure_reason'] == 'measured').sum()
     if measured_count > min_frames:
         return 'measured'
@@ -446,6 +329,7 @@ def track_failure_from_frames(track_df,min_frames=5):
     return 'other'
 
 
+
 def plot_tracks_failure_distribution(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0, 
                                      show_global=True, figsize_video=(12,6), figsize_global=(5,5),
                                      context_label =""):
@@ -454,24 +338,35 @@ def plot_tracks_failure_distribution(df_raw_agg_input, aspect_ratio_thr=3.0, ang
     # Clasificación en vivo
     df_raw_agg = assign_failure_reasons(df_raw_agg, aspect_ratio_thr, angle_thr)
     
-    failure_priority = ["measured", "incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail","short_track" ,"other"]
-    plot_colors = ["#4CAF50", "#FFB74D", "#FF8A65", "#E57373", "#BA68C8", "#F06292","#3d8f95", "#90A4AE"]
+    failure_priority = [
+        "measured", "short_track", "not_a_fish", "incomplete_3D", 
+        "bad_pointcloud", "borders", "overlap", "aspect_ratio_fail", 
+        "angle_fail" ,"other"
+    ]
+    plot_colors = [
+        "#4CAF50", "#FFB74D", "#000000", "#FF8A65", 
+        "#c0392b", "#E57373", "#BA68C8", "#F06292",
+        "#3d8f95", "#90A4AE"
+    ]
     
-    
-
     track_failures = df_raw_agg.groupby("unique_track").apply(track_failure_from_frames).reset_index()
+        
     track_failures.columns = ["unique_track", "track_failure_reason"]
-    track_failures["source_folder"] = track_failures["unique_track"].apply(lambda x: x.split("/")[1])
+    
+    track_failures["source_folder"] = track_failures["unique_track"].apply(
+        lambda x: x.split("/")[1] if "/" in x else x.split("_")[1]
+    )
     # track_failures["source_folder"] = track_failures["unique_track"].apply(lambda x: "_".join(x.split("_")[:-1]))
 
     track_stacked_df = track_failures.groupby(["source_folder", "track_failure_reason"]).size().unstack(fill_value=0)
+    
     for col in failure_priority:
         if col not in track_stacked_df.columns: track_stacked_df[col] = 0
     track_stacked_df = track_stacked_df[failure_priority]
 
     track_stacked_df.plot(kind="bar", stacked=True, figsize=figsize_video, color=plot_colors)
     plt.xlabel("Video Code")
-    plt.ylabel("Número de Tracks")
+    plt.ylabel("Number of Tracks")
     plt.title(f"{context_label} Distribución apilada de tracks (AR >= {aspect_ratio_thr} | Ang <= {angle_thr}º)")
     plt.xticks(rotation=45)
     plt.legend(title="Causa de fallo", bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -520,7 +415,7 @@ def plot_frame_failures(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0,
     # Clasificación en vivo
     df_raw_agg = assign_failure_reasons(df_raw_agg, aspect_ratio_thr, angle_thr)
 
-    failure_priority = ["measured", "incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail","short_track" ,"other"]
+    failure_priority = ["measured", "short_track","incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail" ,"other"]
     plot_colors = ["#4CAF50", "#FFB74D", "#FF8A65", "#E57373", "#BA68C8", "#F06292","#3d8f95", "#90A4AE"]
 
     stacked_df = df_raw_agg.groupby(["source_folder", "failure_reason"]).size().unstack(fill_value=0)
@@ -567,64 +462,6 @@ def plot_frame_failures(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0,
 
 
 
-def plot_frame_failures_0(df_raw_agg_input, aspect_ratio_thr=3.0, angle_thr=20.0, 
-                        figsize_video=(12,6), figsize_global=(5,5), show_global=True,
-                        context_label =""):
-    
-    df_raw_agg = df_raw_agg_input.copy()
-    
-    # Clasificación en vivo
-    df_raw_agg = assign_failure_reasons(df_raw_agg, aspect_ratio_thr, angle_thr)
-    df_raw_agg.loc[df_raw_agg["track_id"] == -1, "failure_reason"] = "not_tracked"
-
-    failure_priority = ["measured","not_tracked", "incomplete_3D", "borders", "overlap", "aspect_ratio_fail", "angle_fail", "other"]
-    plot_colors = ["#4CAF50","#DB1B1B", "#FFB74D", "#FF8A65", "#E57373", "#BA68C8", "#F06292", "#90A4AE"]
-    
-    not_tracked_ratio = (df_raw_agg["track_id"] == -1).mean() * 100
-    print(f"🚫 Frames no traqueados: {not_tracked_ratio:.2f}%")
-
-    stacked_df = df_raw_agg.groupby(["source_folder", "failure_reason"]).size().unstack(fill_value=0)
-    for col in failure_priority:
-        if col not in stacked_df.columns: stacked_df[col] = 0
-    stacked_df = stacked_df[failure_priority]
-
-    stacked_df.plot(kind="bar", stacked=True, figsize=figsize_video, color=plot_colors)
-    plt.xlabel("Video Code")
-    plt.ylabel("Número de Frames")
-    plt.title(f"Distribución apilada de frames (AR >= {aspect_ratio_thr} | Ang <= {angle_thr}º)")
-    plt.xticks(rotation=45)
-    plt.legend(title="Causa de fallo", bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.tight_layout()
-    plt.show()
-
-    if show_global:
-        global_counts = df_raw_agg["failure_reason"].value_counts().reindex(failure_priority, fill_value=0)
-        global_df = global_counts.reset_index()
-        global_df.columns = ["Causa de Fallo", "Cantidad"]
-
-        plt.figure(figsize=figsize_global)
-        bottom = 0
-
-        for i, row in global_df.iterrows():
-            count = row["Cantidad"]
-            label_with_count = f"{row['Causa de Fallo']} ({count})"
-            plt.bar(["Global"], [count], bottom=bottom, color=plot_colors[i], label=label_with_count)
-            bottom += count
-
-        plt.ylabel("Número de Frames")
-        plt.title(f"{context_label} Distribución global de frames medidos")
-        plt.legend(title="Causa de fallo", bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.tight_layout()
-        plt.show()
-
-        print("\n" + "="*60)
-        print("📊 TABLA 1: Distribución Global de Frames")
-        print("="*60)
-        global_df["Porcentaje (%)"] = (global_df["Cantidad"] / global_df["Cantidad"].sum() * 100).round(2)
-        display(global_df)
-
-    return stacked_df
-
 def plot_aspect_ratio_vs_length(df_raw, ASPECT_RATIO_THR=3.0, figsize=(10, 8),context_label=""):
     df_valid = df_raw[(df_raw['aspect_ratio'] > 0) & (df_raw['filtered_length'] > 0)].copy()
 
@@ -653,8 +490,9 @@ def plot_aspect_ratio_vs_length(df_raw, ASPECT_RATIO_THR=3.0, figsize=(10, 8),co
     plt.tight_layout()
     plt.show()
     
-def smart_aggregator(track_df, length_col='filtered_length',num_tracks_threshold=5,deviation_from_median=1.5):
+def smart_aggregator(track_df, length_col='filtered_length',num_tracks_threshold=5,deviation_from_median=2):
     num_frames = len(track_df)
+    
     if num_frames <= num_tracks_threshold: return None
     
     if track_df.empty:
@@ -664,10 +502,10 @@ def smart_aggregator(track_df, length_col='filtered_length',num_tracks_threshold
     if not sorted_lengths: return None
     
     valid_max = sorted_lengths[0]
+    c_med = np.median(sorted_lengths)
     if len(sorted_lengths) >= 5:
         while len(sorted_lengths) > 2:
             c_max, n_max = sorted_lengths[0], sorted_lengths[1]
-            c_med = np.median(sorted_lengths)
             
             if c_max > c_med * deviation_from_median:
                 sorted_lengths.pop(0); continue
@@ -688,11 +526,14 @@ def smart_aggregator(track_df, length_col='filtered_length',num_tracks_threshold
     calculated_length_cm = rep_len_m * 100.0
     abs_err_cm = abs(calculated_length_cm - gt_cm) if gt_cm > 0 else None
     
+    rel_error_perc = (abs_err_cm / gt_cm) * 100 if gt_cm > 0 else None
+    
     return pd.Series({
         'n_frames_validos': num_frames,
         'calculated_length_cm': calculated_length_cm,
         'gt_cm': gt_cm,
         'abs_error_cm': abs_err_cm,
+        'rel_error_perc': rel_error_perc,
         'mean_elevation_deg': track_df['elevation_deg'].mean()
     })
     
@@ -796,8 +637,8 @@ def plot_smart_filter_explanation_pro(
     folder_code, 
     track_id, 
     length_col='filtered_length', 
-    ar_thr=1.8, 
-    angle_thr=20.0
+    ar_thr=3, 
+    angle_thr=30.0
 ):
     folder_str, track_str = str(folder_code), str(track_id)
     mask = (df['source_folder'].astype(str) == folder_str) & (df['track_id'].astype(str) == track_str)
