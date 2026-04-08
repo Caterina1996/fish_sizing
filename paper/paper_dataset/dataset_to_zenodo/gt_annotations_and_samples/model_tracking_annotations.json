@@ -1,0 +1,78 @@
+{
+  "metadata": {
+    "description": "Frame-level track ID annotations. These map the visual track ids resulting from calculating inference with our model to the physical fish identities in the ground truth.",
+    "format": "Bagfile_Day -> Bagfile_Hour -> Model_Track_ID : Physical_Fish_Identity"
+  },
+  "single_fish_tracks": {
+    "2024_11_12": "Fish 0",
+    "2024_11_28": "Fish 1",
+    "2025_05_08": "Fish 3",
+    "2025_08_21": "Red Tag"
+  },
+  "multiple_fish_tracks": {
+    "2024_11_28": {
+      "13-14-43_0": {"1": "Fish 1", "21": "Fish 2", "23": "Fish 1", "24": "Fish 1", "29": "Fish 2", "30": "not_a_fish", "33": "not_a_fish", "37": "Fish 1", "38": "not_a_fish", "45": "Fish 1", "58": "Fish 2", "61": "Fish 2", "62": "Fish 2", "75": "Fish 2", "77": "Fish 2", "81": "Fish 2", "82": "Fish 2"},
+      "13-16-54_0": {"1": "Fish 1", "5": "Fish 2", "7": "not_a_fish", "12": "Fish 2", "13": "Fish 2", "17": "Fish 2", "19": "Fish 2", "29": "Fish 2", "41": "Fish 1", "49": "Fish 1", "53": "Fish 1", "55": "Fish 2", "59": "Fish 2", "67": "Fish 2", "68": "Fish 2", "70": "Fish 1", "71": "Fish 2"},
+      "13-27-52_0": {"1": "Fish 1", "2": "Fish 2", "3": "Fish 2", "4": "not_a_fish", "5": "Fish 2", "6": "Fish 2", "8": "Fish 2", "11": "Fish 1", "12": "Fish 2", "13": "Fish 2", "30": "not_a_fish", "33": "Fish 1", "35": "not_a_fish", "37": "Fish 1"},
+      "13-32-16_0": {"1": "Fish 2", "4": "Fish 1", "6": "Fish 1", "17": "Fish 2", "25": "Fish 1", "28": "Fish 1", "30": "Fish 1", "35": "Fish 1", "44": "Fish 1", "52": "Fish 1", "53": "Fish 1", "67": "Fish 1"},
+      "13-34-27_0": {"1": "Fish 1", "5": "Fish 1", "8": "Fish 1", "16": "Fish 1", "21": "Fish 1", "23": "Fish 2", "28": "Fish 1", "30": "not_a_fish", "31": "Fish 1"},
+      "13-36-49_0": {"1": "Fish 2", "2": "Fish 1", "3": "Fish 2", "6": "Fish 2", "7": "Fish 2", "10": "Fish 2", "11": "Fish 2", "19": "Fish 2", "20": "Fish 1", "24": "Fish 2", "30": "Fish 1", "33": "Fish 2", "40": "not_a_fish", "41": "not_a_fish", "42": "not_a_fish"},
+      "13-39-00_0": {"1": "not_a_fish", "2": "Fish 1", "8": "Fish 1", "11": "Fish 1", "12": "Fish 1", "13": "not_a_fish", "23": "not_a_fish"},
+      "13-41-12_0": {"2": "Fish 2", "3": "Fish 1", "11": "Fish 1", "14": "Fish 2"},
+      "13-42-45_0": {"1": "Fish 1", "2": "Fish 2", "5": "Fish 1", "8": "not_a_fish", "17": "Fish 1", "26": "Fish 1"},
+      "13-48-24_0": {"1": "Fish 1", "4": "Fish 2", "5": "Fish 2", "10": "Fish 2"},
+      "13-49-20_0": {"1": "Fish 1", "2": "Fish 2", "9": "Fish 2", "13": "Fish 1", "16": "Fish 2", "25": "Fish 1", "29": "Fish 2", "32": "Fish 2", "34": "Fish 2", "36": "Fish 2", "41": "Fish 2", "44": "Fish 1", "56": "Fish 1", "58": "Fish 2", "60": "Fish 1", "61": "Fish 2", "64": "Fish 2", "69": "Fish 1", "72": "Fish 1", "73": "Fish 1", "75": "Fish 1", "76": "Fish 1", "77": "Fish 1"},
+      "13-19-06_0": {"1": "Fish 1", "5": "Fish 2", "7": "Fish 1", "12": "Fish 1", "15": "Fish 2", "19": "Fish 2", "22": "Fish 1", "25": "Fish 2", "27": "Fish 2", "33": "Fish 2", "40": "Fish 2"},
+      "13-21-17_0": {"1": "Fish 2", "2": "Fish 1", "4": "Fish 2", "15": "not_a_fish", "21": "Fish 1", "24": "Fish 2", "25": "not_a_fish", "30": "not_a_fish", "32": "Fish 1", "33": "Fish 1", "37": "Fish 2", "39": "Fish 2", "60": "Fish 2", "62": "Fish 1", "65": "Fish 1", "68": "Fish 1", "69": "None", "70": "not_a_fish", "72": "Fish 2", "78": "Fish 2"},
+      "13-23-29_0": {"1": "Fish 2", "4": "Fish 2", "12": "Fish 2", "15": "Fish 2", "16": "Fish 1", "19": "Fish 1", "21": "Fish 2", "25": "Fish 2", "27": "Fish 1", "32": "Fish 2", "35": "Fish 2", "36": "Fish 1", "41": "Fish 2", "42": "not_a_fish", "44": "Fish 1", "48": "Fish 1", "50": "Fish 2", "54": "Fish 1", "55": "Fish 1", "58": "Fish 1", "60": "Fish 2", "61": "Fish 2", "62": "Fish 1"},
+      "13-25-41_0": {"1": "Fish 1", "2": "Fish 2", "5": "Fish 2", "11": "Fish 1", "12": "Fish 1", "17": "Fish 2", "18": "Fish 2", "22": "Fish 1", "24": "Fish 1", "33": "Fish 1", "35": "Fish 2", "36": "Fish 1", "38": "Fish 2", "43": "Fish 1", "44": "Fish 1", "46": "Fish 2", "51": "Fish 2", "52": "not_a_fish", "53": "Fish 2", "63": "Fish 1", "67": "Fish 2", "68": "Fish 1", "70": "Fish 2", "76": "Fish 1"},
+      "13-47-08_0": {"1": "Fish 1", "2": "Fish 2", "8": "Fish 2", "17": "Fish 1", "25": "Fish 2"}
+    },
+    "2025_05_08": {
+      "11-28-42_0": {"1": "Fish 4", "2": "Fish 3", "5": "Fish 4"},
+      "11-29-16_1": {"1": "Fish 3", "2": "Fish 4", "6": "Fish 4", "8": "Fish 4"},
+      "11-29-49_2": {"1": "Fish 4", "2": "Fish 3", "6": "Fish 4", "7": "Fish 4"},
+      "11-30-34_0": {"1": "Fish 4", "6": "Fish 3"},
+      "11-31-08_1": {"1": "Fish 3", "2": "Fish 4", "3": "Fish 4", "8": "Fish 4"},
+      "11-33-23_0": {"1": "Fish 3", "2": "Fish 4", "10": "Fish 4", "18": "Fish 3", "19": "Fish 4", "20": "Fish 4"},
+      "11-33-52_1": {"1": "Fish 3", "2": "Fish 4", "4": "Fish 3"},
+      "11-36-36_0": {"1": "Fish 3", "2": "Fish 4", "8": "Fish 3", "13": "Fish 4", "23": "Fish 4", "27": "Fish 4", "30": "Fish 3"},
+      "11-37-20_1": {"1": "not_a_fish", "2": "Fish 3", "8": "Fish 4", "16": "Fish 3", "18": "Fish 4", "25": "Fish 4", "33": "Fish 4", "34": "Fish 4"},
+      "11-41-45_0": {"1": "Fish 3", "8": "Fish 3"},
+      "11-42-15_1": {"1": "Fish 3"},
+      "11-44-48_0": {"1": "Fish 3", "3": "Fish 4", "6": "Fish 4", "7": "Fish 4", "10": "not_a_fish"},
+      "11-48-15_0": {"1": "Fish 3", "2": "Fish 4", "4": "Fish 5", "6": "Fish 5", "13": "Fish 5", "14": "Fish 3", "16": "Fish 4", "18": "Fish 5", "19": "Fish 5", "22": "Fish 5"},
+      "11-49-52_0": {"1": "Fish 3", "3": "Fish 4", "4": "Fish 5", "7": "Fish 5", "10": "Fish 3", "13": "Fish 4", "14": "Fish 5"},
+      "11-57-17_0": {"1": "Fish 3", "2": "Fish 5", "4": "Fish 4"},
+      "11-57-59_0": {"1": "Fish 4", "2": "Fish 4", "4": "Fish 5", "9": "Fish 3", "10": "Fish 3", "16": "Fish 4", "20": "Fish 5", "24": "Fish 3"},
+      "11-59-57_0": {"1": "Fish 4", "2": "Fish 5", "8": "Fish 3", "14": "Fish 3", "20": "Fish 4", "24": "Fish 3"},
+      "12-00-39_0": {"1": "Fish 5", "2": "Fish 3", "3": "Fish 4", "14": "Fish 5", "17": "Fish 4", "29": "Fish 4", "34": "Fish 4", "36": "Fish 4", "39": "Fish 4"},
+      "12-01-20_0": {"1": "Fish 4", "2": "Fish 5", "3": "Fish 3", "4": "Fish 4", "5": "Fish 3", "9": "Fish 4", "13": "Fish 5", "26": "Fish 3", "29": "Fish 5", "33": "Fish 5"},
+      "12-02-02_0": {"1": "Fish 5", "2": "Fish 4", "3": "Fish 3", "9": "Fish 4", "11": "Fish 5", "13": "Fish 5", "16": "Fish 4"},
+      "12-02-44_0": {"1": "Fish 3", "2": "Fish 4", "3": "Fish 5", "11": "Fish 5", "13": "Fish 4"}
+    },
+    "2025_08_21": {
+      "10-01-53_0_compressed-r201-end": {"1": "Red Tag", "3": "Unmarked", "4": "Unmarked", "10": "Red Tag", "11": "Red Tag", "13": "Unmarked", "18": "Red Tag", "19": "Unmarked", "20": "None", "31": "Unmarked", "32": "Red Tag"},
+      "10-07-59_0-r50-end": {"1": "Unmarked", "2": "Red Tag", "3": "Unmarked", "5": "Unmarked", "6": "Red Tag", "9": "Unmarked", "12": "Unmarked", "13": "None", "14": "None", "15": "Red Tag", "16": "Red Tag", "18": "Red Tag", "19": "Red Tag", "20": "Red Tag", "21": "Unmarked", "22": "None", "24": "Red Tag", "27": "Unmarked", "28": "Red Tag"},
+      "10-09-31_0-r0-344": {"1": "Unmarked", "4": "Red Tag", "5": "Unmarked", "7": "Unmarked", "8": "None", "9": "Red Tag", "10": "Unmarked", "12": "Unmarked", "16": "Red Tag", "17": "Unmarked"},
+      "10-09-31_0-r398-end": {"1": "Red Tag", "2": "Unmarked", "4": "Unmarked", "5": "Unmarked", "7": "Red Tag", "8": "Unmarked", "9": "Unmarked", "12": "Red Tag", "13": "Red Tag", "14": "Red Tag"},
+      "10-11-02_0-r0-244": {"1": "Unmarked", "2": "Red Tag", "3": "Red Tag", "7": "Unmarked", "9": "None", "14": "Red Tag"},
+      "10-11-02_0-r295-end": {"1": "Red Tag", "2": "Unmarked", "4": "Red Tag", "8": "None", "10": "Red Tag", "14": "Unmarked"},
+      "10-12-34_0-r215-end": {"1": "Red Tag", "2": "Red Tag", "4": "Unmarked", "6": "Red Tag", "7": "None", "10": "Red Tag", "12": "Red Tag", "14": "None", "15": "Unmarked"},
+      "10-14-05_0-r0-528": {"1": "Red Tag", "2": "Unmarked", "6": "Red Tag", "9": "Unmarked", "10": "Red Tag", "12": "None", "13": "Unmarked", "15": "None", "16": "None", "17": "Unmarked", "18": "Red Tag"},
+      "10-15-37_0-r496-end": {"1": "Unmarked", "2": "Red Tag", "5": "Red Tag", "6": "Unmarked"},
+      "10-18-24_0_compressed-r47-end": {"1": "Red Tag", "5": "Unmarked", "7": "Unmarked", "10": "Red Tag", "11": "None", "12": "Red Tag", "17": "Red Tag", "18": "Red Tag"},
+      "10-19-44_0_compressed-r383-534": {"1": "Unmarked", "2": "Red Tag"},
+      "10-19-44_0_compressed-r588-end": {"1": "Red Tag", "2": "Unmarked"},
+      "10-20-29_1_compressed-r0-78": {"1": "Red Tag", "2": "Unmarked", "3": "Unmarked", "4": "Red Tag"},
+      "10-22-00_1_compressed": {"1": "Red Tag", "2": "Unmarked", "3": "Red Tag", "5": "None"},
+      "10-37-15_1-r": {"1": "Unmarked", "2": "Red Tag", "3": "Red Tag", "6": "Red Tag", "8": "Unmarked", "9": "not_a_fish", "10": "not_a_fish"},
+      "13-05-55_0-r": {"1": "Red Tag", "2": "Unmarked", "3": "Black Tag", "4": "Black Tag", "5": "Unmarked", "8": "Black Tag", "10": "Red Tag", "11": "None", "15": "Black Tag", "20": "Red Tag", "22": "None", "25": "None", "26": "Unmarked", "27": "None", "28": "Unmarked", "30": "Unmarked", "34": "Unmarked", "38": "Red Tag", "39": "None", "42": "Red Tag", "47": "Unmarked", "49": "Black Tag"},
+      "13-22-22_0_compressed-r60-297": {"1": "Unmarked", "2": "Black Tag", "3": "Red Tag", "6": "Red Tag", "7": "None", "9": "Red Tag", "11": "None", "13": "Black Tag"},
+      "13-22-22_0_compressed-r378-463": {"1": "Black Tag", "2": "Unmarked", "3": "Red Tag", "4": "not_a_fish"},
+      "13-23-54_0_compressed-r0-304": {"2": "Red Tag", "3": "Black Tag", "5": "Unmarked"},
+      "13-23-54_0_compressed-r450-524": {"1": "Unmarked", "2": "Black Tag", "3": "Red Tag", "5": "None"},
+      "13-23-54_0_compressed-r602-end": {"1": "Red Tag", "2": "Black Tag", "3": "Unmarked"}
+    }
+  }
+}

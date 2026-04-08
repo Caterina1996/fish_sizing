@@ -1,0 +1,10 @@
+Dataset,Identifier,Species_Common_Name,Species_Scientific_Name,Total_Length_cm
+Dataset A,Fish 0,E. Seabass,D. labrax,"31,5"
+Dataset A,Fish 1,A. Mackerel,S. scombrus,"28,9"
+Dataset A,Fish 2,Bogue,B. boops,"21,6"
+Dataset A,Fish 3,E. Seabass,D. labrax,"33,5"
+Dataset A,Fish 4,Blue Whiting,M. poutassou,"33,5"
+Dataset A,Fish 5,Blue Whiting,M. poutassou,30
+Dataset B,Red Tag,E. Seabass,D. labrax,"29,1"
+Dataset B,Black Tag,E. Seabass,D. labrax,"26,6"
+Dataset B,Unmarked,E. Seabass,D. labrax,"32,3"
