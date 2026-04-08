@@ -149,7 +149,7 @@ def load_and_filter_dataset(path, dataset_name,recalculate_failure_reason=False,
     final_tracks = track_metrics.join(track_metadata).reset_index()
     
     # Porcentaje de error relativo -> Esto ahora está en la otra función
-    # final_tracks['rel_error_perc'] = (final_tracks['abs_error_cm'] / final_tracks['gt_cm']) * 100
+    final_tracks['rel_error_perc'] = (final_tracks['abs_error_cm'] / final_tracks['gt_cm']) * 100
     
     success_rate = (len(final_tracks) / total_initial_tracks) * 100
     print(f"✅ FINAL RESULT: {len(final_tracks)} independent FISH (tracks) successfully aggregated.")
@@ -275,21 +275,21 @@ def assign_failure_reasons(df, aspect_ratio_thr=3.0, angle_thr=30.0):
         c_not_fish, 
         c_borders, 
         c_3d, 
-        c_bad_cloud, 
         c_overlap, 
-        c_ar, 
+        c_ar,
         c_angle, 
+        c_bad_cloud,
         c_measured
     ]
 
     choices = [
         "not_a_fish",
         "borders",      
-        "incomplete_3D",       
-        "bad_pointcloud", 
-        "overlap",      
+        "incomplete_3D",  
+        "overlap",     
         "aspect_ratio_fail",
         "angle_fail",
+        "bad_pointcloud", 
         "measured"
     ]
     
