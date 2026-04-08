@@ -59,7 +59,7 @@ Results are organized systematically for every execution:
 The project is fully containerized to ensure cross-platform compatibility and seamless GPU acceleration setup.
 
 > [!IMPORTANT]
-> **Detailed Docker Instructions**: Please refer to [DOCKER.md](./DOCKER.md) for build and runtime configuration.
+> **Detailed Docker Instructions**: Please refer to [DOCKER.md](./DOCKER_SETUP.md) for build and runtime configuration.
 
 ---
 *Developed by Caterina Muntaner-Gonzalez as a part of the PhD research.
