@@ -1,1 +1,0 @@
-frame_id,class_name,object_id,track_id,is_3D_complete,in_image_borders,does_overlap,overlapping_fish_ids,fish_direction,elevation_deg,azimuth_deg,raw_length,filtered_length,fish_dist_from_camera
