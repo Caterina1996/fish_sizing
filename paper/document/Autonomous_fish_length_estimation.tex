@@ -1,0 +1,765 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% This is just an example/guide for you to refer to when submitting manuscripts to Frontiers, it is not mandatory to use Frontiers .cls files nor frontiers.tex  %
+% This will only generate the Manuscript, the final article will be typeset by Frontiers after acceptance.   
+%                                              %
+%                                                                                                                                                         %
+% When submitting your files, remember to upload this *tex file, the pdf generated with it, the *bib file (if bibliography is not within the *tex) and all the figures.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% Version 3.4 Generated 2022/06/14 %%%
+%%% You will need to have the following packages installed: datetime, fmtcount, etoolbox, fcprefix, which are normally inlcuded in WinEdt. %%%
+%%% In http://www.ctan.org/ you can find the packages and how to install them, if necessary. %%%
+%%%  NB logo1.jpg is required in the path in order to correctly compile front page header %%%
+
+\documentclass[utf8]{FrontiersinHarvard} % for articles in journals using the Harvard Referencing Style (Author-Date), for Frontiers Reference Styles by Journal: https://zendesk.frontiersin.org/hc/en-us/articles/360017860337-Frontiers-Reference-Styles-by-Journal
+% \documentclass[utf8]{FrontiersinVancouver} % for articles in journals using the Vancouver Reference Style (Numbered), for Frontiers Reference Styles by Journal: https://zendesk.frontiersin.org/hc/en-us/articles/360017860337-Frontiers-Reference-Styles-by-Journal
+%\documentclass[utf8]{frontiersinFPHY_FAMS} % Vancouver Reference Style (Numbered) for articles in the journals "Frontiers in Physics" and "Frontiers in Applied Mathematics and Statistics" 
+
+%\setcitestyle{square} % for articles in the journals "Frontiers in Physics" and "Frontiers in Applied Mathematics and Statistics" 
+\usepackage{url,hyperref,lineno,microtype,subcaption}
+\usepackage[onehalfspacing]{setspace}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage{booktabs} 
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{anyfontsize}
+\usepackage{tabularx}
+\usepackage{multirow} 
+\usepackage{lipsum} % Solo para texto de relleno
+\usepackage{color,soul}
+\usepackage{lineno}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{makecell}
+
+
+\usepackage[export]{graphbox} 
+\usepackage[normalem]{ulem}
+\usepackage{soul}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Comment the following line to eliminate line numbers:
+% \linenumbers
+
+
+% Leave a blank line between paragraphs instead of using \\
+
+
+\def\keyFont{\fontsize{8}{11}\helveticabold }
+
+
+\def\firstAuthorLast{Muntaner-Gonzalez {et~al.}} %use et al only if is more than 1 author
+\def\Authors{Caterina Muntaner-Gonzalez\,$^{1,*}$, Miguel Martin-Abadal\,$^{1}$ and Yolanda González-Cid\,$^{1}$}
+% Affiliations should be keyed to the author's name with superscript numbers and be listed as follows: Laboratory, Institute, Department, Organization, City, State abbreviation (USA, Canada, Australia), and Country (without detailed address information such as city zip codes or street names).
+% If one of the authors has a change of address, list the new address below the correspondence details using a superscript symbol and use the same symbol to indicate the author in the author list.
+\def\Address{$^{1}$Department of Mathematics and Computer Science, University of the Balearic Islands \\ Cra. de Valldemossa, km 7,5, Palma, 07122, Illes Balears, Spain}
+
+
+% The Corresponding Author should be marked with an asterisk
+% Provide the exact contact address (this time including street name and city zip code) and email of the corresponding author
+\def\corrAuthor{Caterina Muntaner-Gonzalez}
+
+\def\corrEmail{c.muntaner@uib.cat}
+
+
+
+
+
+\begin{document}
+\onecolumn
+\firstpage{1}
+
+\title[Autonomous fish length estimation]{Autonomous underwater stereo vision system for non-invasive fish length estimation in marine environments} % Non-Invasive Fish Length Estimation Using Underwater Stereo Vision and Tracking-Based Aggregation??
+
+
+
+
+\author[\firstAuthorLast ]{\Authors} %This field will be automatically populated
+\address{} %This field will be automatically populated
+\correspondance{} %This field will be automatically populated
+
+\extraAuth{}% If there are more than 1 corresponding author, comment this line and uncomment the next one.
+%\extraAuth{corresponding Author2 \\ Laboratory X2, Institute X2, Department X2, Organization X2, Street X2, City X2 , State XX2 (only USA, Canada and Australia), Zip Code2, X2 Country X2, email2@uni2.edu}
+
+
+\maketitle
+
+
+\begin{abstract}
+
+
+Marine ecosystems are undergoing rapid change due to climate and human pressures, increasing the need for monitoring tools. Fish length data are particularly valuable for assessing population and ecosystem status, yet conventional measurement methods are often time-consuming and invasive.
+This study introduces a practical, non-invasive pipeline for automatic fish length estimation based on an underwater  \textcolor{blue}{Stereo-Vision System} (SVS) that provides synchronized image pairs for 3D reconstruction. Fish length is estimated by combining 2D segmentation masks with reconstructed 3D scene information, with a multi-object tracking module that enables track-based aggregation of frame-wise estimates to improve robustness. A YOLOv11-based segmentation model together with a BoT-SORT tracker is employed to detect, segment and track target species. The proposed method is evaluated on two datasets of increasing complexity, including controlled multi-species scenarios and live underwater footage in controlled conditions. It achieves a \textcolor{blue}{Mean Absolute Error} (MAE) of 1.30 cm and a \textcolor{blue}{Mean Absolute Percentage Error}(MAPE) of 4.53\%, while operating under a conservative filtering strategy based on geometric and temporal consistency constraints. The pipeline is further integrated into an autonomous SVS, enabling real-time on-board operation in marine environments. Results demonstrate that accurate and robust fish length estimation can be achieved under challenging underwater conditions, supporting the deployment of scalable, non-invasive monitoring solutions for ocean observation.
+
+
+\tiny
+ \keyFont{ \section{Keywords:} Fish length estimation, Stereo-vision systems, Fish segmentation, Fish sizing, Ecosystem Monitoring,  \textcolor{blue}{Non-invasive}} 
+\end{abstract}
+
+\section{Introduction}\label{sec::intro}
+
+
+Monitoring aquatic ecosystems is essential for understanding species dynamics, assessing environmental change, and supporting sustainable management of marine and freshwater resources. The combined pressures of climate change and human activities increasingly alter aquatic habitats, creating an urgent need for monitoring tools that are accurate, scalable, and minimally invasive \citep{Chimienti2025, Saleh2022}. Fish populations play a dual role in this context: they are essential indicators of ecosystem health \citep{Rathi2018} and a critical global resource for food security and economic stability \citep{Liu2022, Yang2021}. Consequently, effective monitoring of fish populations is central not only for ecological research but also for sustainable fisheries management and aquaculture practices \citep{Hasegawa2024, Kandimalla2022}.
+
+Among the essential parameters for ecological assessment, fish size stands out as a critical management indicator. Length measurements are fundamental for estimating biomass, assessing population structure, and understanding growth and trophic relationships \citep{Siddiqui2025, Marrable2023}. Traditionally, obtaining this morphometric information has relied on physical capture and manual measurement, which is labor-intensive, time-consuming, and can be harmful for target organisms \citep{Abinaya2022,CAI2020102117}.
+
+
+
+In response, non-invasive alternatives based on automated visual data acquisition and processing are gaining increasing attention in the field of ecosystem monitoring \citep{Elmezain2025}. Advances in deep learning have significantly accelerated this shift, establishing underwater imagery as a powerful tool for tasks such as detection, classification, tracking, and semi-automated sizing \citep{Saleh2022, unlocking_goodwin_2022, Siddiqui2018, Garcia2020}. This trend is further reinforced by the proliferation of marine cabled video-observatories designed for continuous, non-destructive observation \citep{Marini2018, lopez2020video}.
+
+Despite these advances, the fully automated extraction of precise biometric data in unconstrained underwater environments remains an open challenge. The optical complexity of the medium, characterized by color distortion, light scattering, variable turbidity, and frequent occlusions, significantly limits algorithmic reliability \citep{Elmezain2025}. Furthermore, while artificial intelligence has been investigated for automated fish measurement, existing approaches remain limited and are often constrained by highly controlled, application-specific conditions. 
+
+
+To address these challenges, this work presents a modular pipeline for in situ fish sizing that combines a state-of-the-art instance segmentation model with a custom-designed underwater Stereo Vision System (SVS). The system operates independently of species identification, enabling seamless integration with existing classification frameworks. While previous work by the authors addressed multi-species classification in underwater imagery \citep{muntaner2025automatic}, this study focuses specifically on the geometric challenge of measuring free-swimming specimens. Evaluated in a controlled environment and deployed in an operational underwater SVS, the system provides a practical approach for non-invasive monitoring of fish size distributions in both natural and managed ecosystems, contributing to the development of monitoring technologies that support the automatic assessment of aquatic communities.
+
+
+% Deleted according to reviewer 2:
+\textcolor{red}{ \st{The remainder of this document is structured as follows: Section \ref{sec::related} reviews related work on automatic fish length estimation. Section \ref{sec::methodology} describes the proposed method for automatic fish length estimation, its implementation, and the design of the validation scenarios and experiments. Section \ref{sec::results} presents experimental results and a discussion regarding the possibilities and limitations of the proposed methodology. Section \ref{sec::Field-tests} describes the deployment of the SVS in a real-world scenario and showcases examples of the results obtained. Finally, Section \ref{sec::conclusions} summarizes the main findings and outlines potential future research directions.} }
+
+
+
+\section{Related Work and Contributions}\label{sec::related}
+
+This section provides a summary of the current state of the art in fish length estimation techniques.
+
+
+\subsection{Related Work}
+
+Traditionally, obtaining fish length data has relied on extractive sampling methods, where fish are physically removed from the water to be measured manually. While accurate, these methods are invasive, labor-intensive, stressful for the fauna, and often limited in spatio-temporal scope \citep{Marrable2023}. To address these drawbacks, new methodologies have progressively shifted towards non-invasive approaches based on underwater imagery. Initial digital attempts still required significant human intervention, such as the manual annotation of stereo-video feeds (for example clicking on the snout and fork length of fish) to triangulate measurements \citep{Marrable2023}. However, with the exponential growth of data, the need for fully automated pipelines has become evident.
+
+Monocular approaches, which utilize a single camera, are attractive due to their low cost and hardware simplicity. However, estimating absolute size from a single 2D image suffers from scale ambiguity, since apparent object size depends on both its true dimensions and its distance from the camera. To mitigate this, some cost-effective methods, such as the one proposed by Coro and Walsh \citep{Coro2021}, attempt to estimate size by analyzing pixel occupancy and determining distance based on object brightness. More advanced deep learning techniques allow for reference-free monocular estimation. For instance, Mei et al. \citep{Mei2021} proposed a method that fits a deformable 3D template to a 2D segmentation mask to estimate pose and length. Nevertheless, these approaches often rely on strong geometric assumptions, heuristics, or specific species priors, limiting their generalization in unconstrained environments.
+
+
+Stereo vision systems, on the other hand, mimic human depth perception using two synchronized cameras. By triangulating common features in both images, stereo vision provides precise 3D depth information, effectively solving the scale ambiguity problem without the need for external references \citep{Li2024}. Consequently, stereo vision has become a widely adopted approach for underwater sizing.
+
+Deep learning models have been integrated into these stereo systems to automate the detection and segmentation steps. Current methodologies can be broadly categorized into two approaches: 
+
+\begin{itemize}
+    \item \textbf{Keypoint-based methods:} These focus on detecting specific anatomical landmarks (e.g., snout, tail, eyes) to calculate length. For example,  Voskakis et al. \citep{Voskakis2021} proposed a fully automated stereo vision system that uses convolutional neural networks to detect key measurement points (snout, eye, pelvic fin, and fork tail) to estimate the size of Mediterranean species, such as Gilthead seabream and European seabass, directly in aquaculture cages. Similarly, Hasegawa et al. \citep{Hasegawa2024} recently utilized foundation models like Grounded-SAM combined with Keypoint R-CNN to robustly detect features for resource surveys. Nygård et al. \citep{nygaard2022motion} employed stereo vision to track salmon by detecting key features like the eye and tail to determine pose and perform feature matching for 3D estimation. Yu et al. \citep{Yu2024} also proposed an improved Keypoint R-CNN for free-swimming fish.
+    
+    \item \textbf{Segmentation/Shape-based methods:} These utilize instance segmentation to extract the full silhouette of the fish, which allows for more complex biomass estimations. For instance, Garcia et al. \citep{Garcia2020} developed a system embedded in a trawl net equipped with strobe lights. Their pipeline uses Mask R-CNN to segment individual fish and refines the boundaries using local gradients to extract a skeleton for length measurement. This method proved robust against overlapping fish, although it relied on the controlled environment of the trawl. In a more recent study, Wang et al. \citep{Wang2025} demonstrated that combining instance segmentation with stereo matching can achieve high correlation ($R=0.967$) between surface area and weight.
+\end{itemize}
+
+Despite these significant advances, a review of the current literature reveals a notable gap. The vast majority of successful automated sizing systems are designed for aquaculture, fisheries, or controlled environments \citep{Yang2021, JansiRani2024}. In these scenarios, conditions are often simplified: water turbidity is controlled, illumination is constant (e.g., using strobe lights as in \citep{Garcia2020}), and typically only a single species is monitored. For instance, highly accurate systems have been developed specifically for Bluefin Tuna (\textit{Thunnus thynnus}) \citep{Muoz-Benavent2022}, Tilapia \citep{Abinaya2022}, or specific flatfish species \citep{Zhang2024}.
+
+However, applying these solutions to a wild, unconstrained environment presents a different set of challenges, including diverse multi-species populations, complex backgrounds, and uncontrolled lighting. Furthermore, many automated solutions still rely on semi-automatic workflows or are tailored to fit a specific deformable model of a single species \citep{Mei2021}, limiting their scalability for biodiversity monitoring in heterogeneous ecosystems. 
+
+Consequently, there is a pressing need to develop robust, scenario-independent multi-species methods capable of handling the variability of wild environments. The aim of this work is to take a step towards bridging this gap by exploring new deep learning techniques for fully automated, multi-species fish length estimation in real-world underwater environments.
+
+
+
+\subsection{Main Contributions}\label{subsec::contrib}
+
+
+The main contributions of this work consist of:
+
+\begin{enumerate}[1)]
+   
+    \item \textbf{A novel, open-source, highly modular 3D estimation pipeline} (available on \href{https://github.com/Caterina1996/fish_sizing}{GitHub}) for fish length estimation from stereo imagery. The pipeline combines instance segmentation with 3D reconstruction in a track-based framework, with a decoupled architecture that allows independent adaptation of segmentation, tracking, and geometric processing modules to different cameras, models, and environments.
+
+    \item \textbf{A set of geometric filtering and temporal aggregation strategies} designed to improve the reliability of length estimation under challenging underwater conditions, including occlusions, partial detections, and non-ideal fish orientations.
+
+    \item \textbf{The release of two open stereo-pair image datasets} (available on \href{https://zenodo.org/records/19408363?preview=1&token=eyJhbGciOiJIUzUxMiJ9.eyJpZCI6ImUxOWVhZTRiLTMxYWYtNDY4NS05ZWVkLTRmMTQ4MDRjMTQ5NyIsImRhdGEiOnt9LCJyYW5kb20iOiIzNGNlYmY2NTNhZDUyN2JhODQ0ZTQ5ZmUzMjYxNjIyMiJ9.ehM6b0ys9Fhe_um9gSyPsoz74RgD4zvm7CaR_tQ9zWmRLXF7iGZRo6lrvu64bs-Jpd89VHTfYd9tgyfWH5cB0w}{Zenodo}) with annotations for fish detection and size estimation \citep{muntaner2026fishsizing}.
+
+    \item \textbf{Quantitative validation} of the proposed method on datasets of increasing complexity, including controlled multi-species scenarios and live underwater footage in controlled conditions.
+
+    \item \textbf{Integration into an operational underwater SVS}, enabling real-time on-board fish detection and length estimation in operational marine environments.
+
+\end{enumerate}
+
+
+\section{Materials and Methods}\label{sec::methodology}
+
+
+This section describes the SVS, the generated datasets, the proposed method, its implementation, as well as the design of the validation scenarios and evaluation metrics.
+
+
+\subsection{Stereo Vision System}\label{sec::SVS}
+
+A custom-designed SVS tailored for autonomous, long-term benthic ecosystem monitoring has been used in this study. The SVS hardware comprises an Intel NUC 12 Pro serving as the central processing unit, running Ubuntu 20.04 and the Robot Operating System (ROS), and interfaced with two USB3 Chameleon3 cameras. Scene illumination is provided by dual LED lights, while the entire payload is powered by a high-capacity 14.8 V, 70 Ah Li-Ion battery. Power distribution and system wake-up triggers are strictly managed by an Arduino Nano microcontroller. 
+
+The enclosure has been validated in both shallow and deep-water conditions. It is pressure-rated for deployments of up to 500 m depth, a capability that was rigorously verified within the framework of the PLOME project \citep{PLOME_project}. The SVS and its enclosure under different operating conditions are illustrated in Figure \ref{fig:SVS_enclosure}.
+
+The system can operate in two modes: \textit{regular mode} and \textit{deployment mode}. The first consists of configurable recording cycles, with processing performed either on-board or offline depending on the selected configuration. The latter is intended for long-term autonomous deployments, where battery consumption and computational resources must be carefully managed.
+
+During \textit{deployment mode}, the SVS operates using a cyclical duty scheme consisting of recording, processing, and idle phases. The Arduino microcontroller controls the system power state according to pre-programmed intervals. At the beginning of each cycle, the Intel NUC boots, and the processing pipeline is launched. The stereo cameras and LED lights are activated to record the scene for a predefined burst duration (e.g., 45 seconds), allowing operation independently of ambient light conditions and deployment depth.
+
+
+After the recording phase, the cameras and lights are powered down to reduce energy consumption. The recorded sequence is then processed locally using the proposed automatic sizing pipeline. The resulting biological log includes the timestamp, the detected fish species (recorded in this study as a generic \textit{fish} class), and their estimated lengths. Once the data is stored, the computer shuts down safely until the next scheduled acquisition cycle.
+
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tabular}{ccc}
+        \includegraphics[height=3.5cm,width=0.3\textwidth]{Figure_1a_lanty_piscina_cropped.jpeg} &
+        \includegraphics[height=3.5cm,width=0.3\textwidth]{Figure_1b_lanty_bendinat_cropped.jpeg} &
+        \includegraphics[height=3.5cm, width=0.25\textwidth, trim=0 0 0 50, clip]{Figure_1c_lanty_lander.jpeg} 
+         \\
+    \end{tabular}
+   
+    \vspace{0.05cm}
+    
+    \begin{tabular}{ccc}
+        \includegraphics[height=3.5cm,width=0.3\textwidth]{Figure_1d_lanty_limia.jpeg} &
+         \includegraphics[height=3.5cm,width=0.3\textwidth]{Figure_1e_lanty_obsea_cropped.jpeg} &
+        \includegraphics[height=3.5cm,width=0.25\textwidth]{Figure_1f_lanty_in_lander.jpeg} \\
+    \end{tabular}
+    
+    \caption{The autonomous underwater SVS during different operational conditions. The first column shows laboratory setups, while the second and third columns illustrate field deployments at different depths.}
+    \label{fig:SVS_enclosure}
+\end{figure}
+
+
+
+\subsection{Dataset}\label{subsec::data}
+
+This subsection describes the construction and management of the datasets used to develop and validate the proposed framework. Two different datasets were created for this study, each designed to evaluate the method under distinct conditions. Both datasets were acquired using the SVS system described in Section \ref{sec::SVS}, operating in \textit{regular mode}.
+
+The datasets encompass diverse recording conditions, including varying frame rates, fluctuating illumination, heterogeneous backgrounds, and distinct biological specimens. This variability was intentionally selected to closely replicate the challenging optical environments typically encountered in real-world aquaculture facilities and marine benthic observatories. 
+
+
+\begin{itemize}
+
+\item \textbf{Dataset A:}
+This dataset consists of several video recordings of real fish specimens arranged in a water tank to simulate swimming motion. The fish were purchased from a fish market and recorded post-mortem, which allowed the dataset to be generated without the need for live-animal experimentation. Despite this, the specimens were manually manipulated to reproduce realistic swimming poses and tracks.
+
+The recordings were acquired on different days using different fish specimens. In total, the dataset includes approximately 80 min of video, covering multiple species (\textit{D. labrax}, \textit{S. scombrus}, and \textit{M. poutassou}). The dataset contains both single-fish sequences and multi-fish sequences in which individuals appear to swim freely, bend, and occasionally overlap, thus reproducing challenging real-world scenarios. The controlled acquisition setup allowed for the systematic generation of diverse configurations, including variations in orientation, pose, spatial arrangement, and inter-individual occlusions. Some example images are shown in Figure \ref{fig:dataset1_examples}.
+
+\begin{figure}[htb]
+\centering
+\begin{tabular}{cccc}
+\includegraphics[width=0.4\textwidth,height=0.3\textwidth]{Figure_2a.png} &
+\includegraphics[width=0.4\textwidth,height=0.3\textwidth]{Figure_2b.png} &
+\\
+\includegraphics[width=0.4\textwidth,height=0.3\textwidth]{Figure_2c.jpg} &
+\includegraphics[width=0.4\textwidth,height=0.3\textwidth]{Figure_2d.png}
+\end{tabular}
+\caption{Examples from Dataset A.}
+\label{fig:dataset1_examples}
+\end{figure}
+
+% Since the fish could be positioned and moved at will, it was possible to systematically generate a wide variety of configurations, including different orientations, poses, spatial arrangements, and overlap situations between individuals. 
+
+Prior to recording, all fish were manually measured to establish accurate ground-truth length annotations. Different species were often used simultaneously within the same scenes to facilitate visual distinction between specimens. When multiple individuals of the same species were present, artificial marks were added to enable their identification.
+
+The different fish specimens used for the generation of this dataset are shown in Figure \ref{fig:peixos_rotados}.
+
+
+
+
+
+
+\begin{figure}[htbp]
+    \centering
+    
+    \begin{tabular}{c c c c c c c c}
+        \includegraphics[width=0.2\columnwidth, angle=90]{Figure_3a_Fish_0.jpeg} &
+        \includegraphics[width=0.2\columnwidth, angle=90]{Figure_3b_Fish_1.jpeg} &
+        \includegraphics[width=0.2\columnwidth, angle=90]{Figure_3c_Fish_2.jpeg} &
+        \includegraphics[width=0.2\columnwidth, angle=90]{Figure_3d_Fish_3.jpeg} &
+        \includegraphics[width=0.2\columnwidth, angle=90]{Figure_3e_Fish_4.jpeg} &
+        \includegraphics[width=0.2\columnwidth, angle=90]{Figure_3f_Fish_5.jpeg} \\
+        Fish 0  & Fish 1  & Fish 2 & Fish 3 & Fish 4  & Fish 5 \\
+    \end{tabular}
+    \caption{Representative images of the  \textcolor{blue}{six} fish specimens included in Dataset A. }
+    
+    \label{fig:peixos_rotados}
+\end{figure}
+
+
+
+\item \textbf{Dataset B:}
+This dataset comprises several video recordings of live European seabass (\textit{Dicentrarchus labrax}) swimming in a controlled environment. The dataset contains approximately 30 min of video, including both single-fish and multi-fish sequences, all recorded during a single day. As the fish swim naturally, they interact, bend, and occasionally overlap, thereby representing realistic operational conditions and introducing the typical challenges associated with automatic fish length estimation. Figure \ref{fig:dataset2_examples} showcases examples of images from the dataset.
+
+\begin{figure}[h!]
+\centering
+\begin{tabular}{ccc}
+\includegraphics[width=0.3\textwidth]{Figure_4a.jpg} &
+\includegraphics[width=0.3\textwidth]{Figure_4b.jpg} &
+\includegraphics[width=0.3\textwidth]{Figure_4c.jpg} 
+
+\end{tabular}
+\caption{Examples from dataset B}
+\label{fig:dataset2_examples}
+\end{figure}
+
+To facilitate individual identification, two of the fish were marked with colored labels while one remained unmarked. Ground truth measurements and animal handling procedures were carried out with the collaboration of biologists from the \href{https://www.caib.es/sites/limia/es/que_es_el_limia-53670/}{LIMIA} Institute, who ensured proper measurement protocols and supervised the experimental setup involving live specimens.
+\end{itemize}
+
+\begin{table*}[htbp]
+\centering
+\caption{Summary of fish in Dataset A and Dataset B, including species identification and ground-truth measurements: Total Length ($L_T$). }
+\label{tab:fish_datasets}
+\begin{tabular}{@{}lllcc@{}}
+\toprule
+\textbf{Dataset} & \textbf{Identifier} & \textbf{Species} & \textbf{$L_T$ (cm)} \\ \midrule
+Dataset A & Fish 0 & E. Seabass (\textit{D. labrax})      & 31.5 \\
+          & Fish 1 & A. Mackerel (\textit{S. scombrus})  & 28.9 \\
+          & Fish 2 & Bogue (\textit{B. boops})           & 21.6 \\
+          & Fish 3 & E. Seabass (\textit{D. labrax})     & 33.5 \\
+          & Fish 4 & Blue Whiting (\textit{M. poutassou}) & 33.5 \\
+          & Fish 5 & Blue Whiting (\textit{M. poutassou}) & 30.0 \\ \midrule
+Dataset B & Red Tag   & E. Seabass (\textit{D. labrax}) & 29.1 \\
+          & Black Tag & E. Seabass (\textit{D. labrax}) & 26.6 \\
+          & Unmarked  & E. Seabass (\textit{D. labrax}) & 32.3 \\ \bottomrule
+\end{tabular}
+\end{table*}
+
+Table \ref{tab:fish_datasets} summarizes the information of the fish included in Dataset A and Dataset B, listing individual identifiers, species, and the corresponding ground-truth total lengths ($L_T$). 
+
+
+
+
+
+\subsection{Proposed Method}\label{subsec::method}
+
+
+The proposed method for non-invasive 3D fish measurement from stereo imagery consists of four primary stages: (1) 2D object detection, segmentation, and tracking; (2) 3D point cloud generation and filtering; and (3) temporal tracking and statistical aggregation.
+
+The proposed system is designed following a modular architecture, where detection, tracking, length estimation, and species classification can be independently integrated. In this work, we focus on the length estimation component.
+
+ The pipeline is designed to be robust to typical underwater imaging artifacts and modular, allowing individual components to be upgraded or replaced while maintaining deployability and reliable performance.
+
+An overview of the pipeline is presented in Figure \ref{fig:piepline_summary}.
+
+
+\subsubsection{2D Object Detection, Segmentation and Tracking}\label{subsec::network}
+
+
+As mentioned above, the first step of the proposed method consists of detecting and segmenting fish from the recorded scene. The SVS described in Section~\ref{sec::SVS} acquires synchronized stereo image pairs at a predefined frame rate. These images are rectified and downscaled by a factor of 0.5 in order to reduce computational load and enable faster processing. The left image is then provided as input to a Convolutional Neural Network (CNN) trained to detect and segment fish species. 
+
+
+The network is implemented using the \textit{YOLOv11m-seg} architecture, an updated and more efficient version of the YOLO-based detection framework previously presented by the authors in \citep{muntaner2025automatic}. Although the underlying model is capable of multi-class instance segmentation, for this study, it operates as a class-agnostic \textit{generic fish} detector, since the primary objective is to validate the length estimation pipeline rather than performing taxonomic classification. This strategy also allows the framework to process and evaluate species absent from the original dataset. Moreover, the modular design of the pipeline allows the segmentation component to be easily substituted with other models tailored to different habitats or species. 
+
+YOLOv11 \citep{khanam2024yolov11,yolo11_ultralytics} belongs to a family of single-stage object detectors originally introduced by Redmon et al. \citep{redmon2016you}, which are widely used in real-time vision applications due to their favorable balance between detection accuracy and computational efficiency compared to two-stage approaches such as Faster R-CNN \citep{ren2015faster}. The architecture has undergone continuous development through successive versions \citep{redmon2018YOLOv3, bochkovskiy2020YOLOv4, jocher2020ultralytics, wang2022YOLOv7, YOLOv8_ultralytics, sapkota2025yolo26}.
+
+The model outputs pixel-level segmentation masks together with bounding boxes, class predictions, and confidence scores. These masks allow accurate isolation of each fish instance from the underwater background, defining a precise Region of Interest (ROI).
+
+In addition, the detection outputs are integrated with the \textit{Bot-SORT} tracker, which assigns unique track identifiers to each detected instance. This enables temporal tracking of individual fish across frames and allows the aggregation of multiple measurements per specimen, resulting in more robust final length estimates, as it will be detailed in Section \ref{subsec::aggregation}.
+
+
+\subsubsection{3D Point Cloud Generation and Filtering}
+
+To reduce computational cost and power consumption, the 3D point cloud generation stage is executed only when a fish is detected in the previous step. Otherwise, stereo processing is skipped, and the pipeline advances to the next frame.
+
+Prior to stereo matching, the image pairs undergo preprocessing to improve feature correspondence and 3D reconstruction quality. This stage includes linear brightness matching between left and right images, a custom grayscale conversion that reduces the contribution of the red channel, and the application of Contrast Limited Adaptive Histogram Equalization (CLAHE) to enhance local texture.
+
+When a fish is detected, disparity computation is restricted to selected horizontal regions rather than to the full images. For each detection, a horizontal stripe is defined based on the object’s ROI height, extended by a safety margin. In the presence of multiple detections, overlapping stripes are merged into a single region. This reduces computational load without affecting reconstruction accuracy.
+
+Stereo correspondence within these regions is computed using Semi-Global Block Matching (SGBM), followed by disparity refinement with a Weighted Least Squares (WLS) filter. Parameters for both methods were empirically tuned for underwater imaging conditions.
+
+The 2D segmentation mask produced by the neural network is then applied to the disparity map to retain only pixels corresponding to the target specimen. These pixels are reprojected into 3D space to generate an individual point cloud per fish, which is subsequently used for geometric filtering and length estimation. This process is illustrated in Figure \ref{fig:3D Point Cloud Generation}.
+
+\begin{figure}[htbp]
+    \centering
+    \setlength{\tabcolsep}{4pt} % espacio entre columnas
+
+    \begin{tabular}{cccc}
+        %left bottom right top
+        \includegraphics[width=6cm, trim=100 0 100 200, clip ]{Figure_5a_frame_170_left.png} &
+        \includegraphics[width=6cm, trim=100 0 100 200, clip]{Figure_5b_frame_170_right.png} & \\
+        \includegraphics[width=6cm, trim=100 0 100 200, clip]{Figure_5c_frame_170_disparity.png} &
+        \includegraphics[width=6cm, height=4.15cm ]{Figure_5d_frame_170_pc.png} \\
+        
+    \end{tabular}
+
+    \caption{3D Point Cloud Generation example. From left to right: original left and right images, computed disparity map, and the resulting fish point cloud.}
+    \label{fig:3D Point Cloud Generation}
+\end{figure}
+
+
+
+Stereo reconstruction in underwater environments frequently produces noisy point clouds characterized by floating artifacts and elongation along the optical axis. These distortions, mainly caused by light scattering, specular reflections, and depth estimation uncertainty, can significantly affect the reliability of morphometric measurements. To mitigate these effects, a multi-stage geometry-aware filtering pipeline combined with several consistency checks is applied.
+
+Frames in which the disparity map does not contain a sufficient number of valid points overlapping the 2D segmentation mask are discarded, as a reliable 3D reconstruction cannot be generated. In these cases, only the 2D detection information is logged, including the segmentation mask, species label, track identifier, and timestamp.
+
+For valid frames, the first filtering stage applies a Statistical Outlier Removal (SOR) procedure to suppress sparse floating noise while preserving fine anatomical structures, such as fins and the caudal region. For each point in the cloud, the mean distance to its $k=20$ nearest neighbors is computed. Points whose mean distance exceeds the global mean by more than 2.5 standard deviations are classified as outliers and removed.
+
+Following this initial denoising step, the filtered point cloud is sub-segmented using Hierarchical Density-Based Spatial Clustering of Applications with Noise (HDBSCAN). The largest continuous cluster is isolated under the assumption that it corresponds to the main body of the fish, and it is subsequently used for further analysis.
+
+Principal Component Analysis (PCA) is then performed on the retained cluster to determine the natural anatomical axes of the fish in three-dimensional space. The resulting eigenvectors $(C_1, C_2, C_3)$ are interpreted as the longitudinal (length), vertical (height), and lateral (thickness) axes, respectively. This assumption is made for the case of fusiform fish, but it remains applicable to other body morphologies because the third component ($C_3$) consistently represents the smallest spatial dimension of the specimen. 
+
+Finally, a plane-clipping strategy based on anatomical plausibility constraints is applied. This step serves a dual purpose: it mitigates the stereo-induced effect (artificial elongation along the optical axis) and removes background artifacts or neighboring objects inadvertently captured by oversized 2D segmentation masks.
+To achieve this, two parallel bounding planes are defined orthogonal to the thickness axis ($C_3$) using the longitudinal ($C_1$) and vertical ($C_2$) axes calculated in the previous step. These planes are symmetrically positioned on both sides of the fish's centroid at a predefined threshold distance, corresponding to half the maximum physically plausible fish thickness. To ensure no valid peripheral points (such as fin edges) are lost, the clipping is applied back to the complete SOR-filtered point cloud rather than just the HDBSCAN cluster. Points that fall outside the region bounded by the planes are discarded, and the interior points are retained to form the final filtered point cloud. The complete 3D Point Cloud Filtering is illustrated in Figure \ref{fig:pc_filtering}.
+
+
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tabular}{ccc}
+        
+        %left bottom right top
+        \includegraphics[width=0.28\textwidth, trim=400 0 100 200, clip]{Figure_6a_1_raw.png} &
+        \includegraphics[width=0.28\textwidth, trim=400 0 100 200, clip]{Figure_6b_sor.png} &
+        \includegraphics[width=0.28\textwidth, trim=400 0 100 200, clip]{Figure_6c_clusters.png} \\
+        (a) & (b) & (c)  \\
+        
+        \vspace{0.2cm} \\       
+
+        \includegraphics[width=0.28\textwidth, trim=10 0 10 20, clip]{Figure_6d_PCA_axes.png} &
+        \includegraphics[width=0.28\textwidth, trim=400 300 400 300, clip]{Figure_6e_clipping.png} &
+        \includegraphics[width=0.28\textwidth, trim=100 100 100 100, clip]{Figure_6f_final_perpendicular.png} \\
+        (d)  & (e)  & (f) 
+    \end{tabular}
+    
+    \caption{Adaptive filtering process applied to the raw point cloud. 
+    (a) Raw point cloud 
+    (b) Result after SOR. 
+    (c) HDBSCAN clustering applied to isolate the main body (light blue).
+    (d) Isolated main cluster with its Principal Component Analysis (PCA) axes ($C_1$: Red/Length, $C_2$: Green/Width, $C_3$: Blue/Thickness).
+    (e) Plane clipping based along $C_3$: green points are kept, red points are discarded, bounded by parallel green planes. 
+    (f) Final filtered point cloud viewed perpendicular to the thickness plane, with the main length axis ($C_1$) highlighted in blue.}
+    \label{fig:pc_filtering}
+\end{figure}
+
+
+
+The final, filtered point cloud is measured by projecting all surviving points onto the primary eigenvector ($C_1$), which represents the spine or total length. The estimated 3D length is computed as the Euclidean distance between the maximum and minimum projections along this axis, as described in Equation ~\eqref{eq::fish_length}; making the measurement invariant to the fish's spatial rotation. While this assumption strictly aligns with fusiform morphologies, it could be adapted to other body plans. For instance, in laterally compressed, deep-bodied fish (where height exceeds length), the secondary eigenvector ($C_2$) could be dynamically selected as the major axis. In all cases, the $C_3$ eigenvector consistently captures the transverse dimension (thickness), therefore, the anatomically constrained plane-clipping strategy should remain valid for point cloud filtering.
+
+\begin{equation}
+\label{eq::fish_length}
+L = \max_{i}\left( \mathbf{p}_i \cdot \mathbf{C}_1 \right) - \min_{i}\left( \mathbf{p}_i \cdot \mathbf{C}_1 \right)
+\end{equation}
+
+ 
+
+\subsubsection{Temporal Tracking and Statistical Aggregation}\label{subsec::aggregation}
+
+Once individual 3D measurements are extracted per frame, they must be aggregated across the temporal track of each specimen to obtain a single, definitive morphological metric. Simple averaging is suboptimal for live specimens, as fish frequently exhibit lateral flexion (bending) during locomotion, systematically underestimating their true anatomical length. Conversely, selecting the absolute maximum measured length across a track is highly susceptible to transient stereo-matching anomalies and segmentation inaccuracies that manifest as artificial axial elongations.
+
+To address this, a rigorous temporal aggregation algorithm is implemented. Before aggregating a track ($T_i$), individual frames are subjected to a battery of spatial and geometric reliability checks to ensure data integrity. Only frames satisfying all the following heuristics are admitted into the temporal set:
+\begin{itemize}
+    \item \textbf{Depth Estimation Reliability:} The elevation angle relative to the camera must be $\theta_{elev} \le \theta_{max}$ (where $\theta_{max} = 30^\circ$), effectively excluding specimens swimming perpendicularly to the image plane where stereo depth errors peak.
+    
+    \item \textbf{Completeness Constraint:} Specimens intersecting the image boundaries (entering or exiting the field of view) are excluded to prevent partial length measurements.
+    
+    \item \textbf{Occlusion Handling:} In instances of overlapping bounding boxes, only the specimen with the smaller mean $Z$-coordinate (i.e., the individual closest to the camera) is retained, as occluded individuals yield unreliable morphometric data.
+    
+    \item \textbf{Aspect Ratio Consistency:} The 2D oriented bounding box must exhibit an aspect ratio consistent with the expected biology of the fish, discarding heavily distorted segmentation masks. Specimens with an aspect ratio below a specific threshold are discarded, as the longitudinal dimension of fusiform fish inherently exceeds their vertical dimension.
+\end{itemize}
+
+Let $L = \{l_1, l_2, \dots l_n\}$ 
+be the set of valid length measurements for a given track that passed the reliability checks, sorted in ascending order such that  $l_1 \leq \dots \leq l_{n-1} \leq l_{n}$.
+
+Short tracks with fewer than $N$ valid observations are discarded to guarantee a minimum statistical significance. For the remaining tracks, the algorithm iteratively evaluates candidates to isolate the true extended anatomical length applying the following steps:
+
+\begin{enumerate}
+    \item \textbf{Gross Outlier Rejection:} The median of the length set, $\tilde{L}$, is computed. Any candidate maximum $l_k$ exceeding twice the median ($l_k > 2\tilde{L}$) is immediately discarded as a critical stereo artifact or multi-instance segmentation fusion.
+    
+    \item \textbf{Temporal Consistency Validation:} To confirm that a maximum value is physically supported by the rest of the track data, rather than being an isolated anomaly, the relative difference between the current candidate $l_k$ and the next largest value $l_{k-1}$ is evaluated. The candidate $l_k$ is accepted as the validated maximum if the following consistency condition is met:
+    \begin{equation}
+        \frac{l_k - l_{k-1}}{l_{k-1}} < 0.05
+    \end{equation}
+    If the temporal consistency condition is not satisfied (indicating a sudden, unsupported jump $>5\%$), the candidate $l_k$ is discarded, and the evaluation proceeds to $l_{k-1}$. 
+    
+    \item \textbf{Final Metric Generation:} Once the anomalies are filtered, the definitive morphological metric for the track is computed based on track length density. If the sequence contains a highly populated set of valid frames ($L \ge 20$), the final length is calculated as the arithmetic mean of the top 20 highest valid measurements. This top-tier averaging further smooths out minor frame-level fluctuations. Conversely, for shorter tracks ($L < 20$), the single validated maximum ($l_k$) obtained from the previous iterative filtering step is retained as the definitive measurement.
+    
+\end{enumerate}
+
+In the rare event that the list is reduced to two elements without satisfying the consistency threshold, the remaining maximum is conservatively retained. This iterative approach effectively filters out isolated artificial elongations while capturing the maximum extended state of the body during the swimming cycle, yielding an aggregated biometric metric that is robust against typical underwater computer vision noise.
+
+
+\begin{figure}[t] 
+    \centering
+    \includegraphics[width=\textwidth, trim=0cm 0cm 8cm 0cm, clip]{Figure_7_Pipeline_measuring.png} 
+    \caption{Proposed 3D fish measurement pipeline consisting of three main stages: 2D processing, 3D generation and filtering, and temporal analysis.}
+    \label{fig:piepline_summary}
+\end{figure}
+
+
+\subsection{Validation and Evaluation Metrics}\label{subsec::valeval}
+
+To validate the proposed methodology, the developed pipeline was evaluated against Dataset A and Dataset B. The evaluation was structured into two primary testing scenarios: sequences featuring an isolated single fish and those containing multiple individuals. 
+
+Each unique generated track (\texttt{track\_id}) was manually correlated with the corresponding physical specimen to assign its true anatomical length, serving as the ground truth. The estimated fish length, calculated following the procedure described in Section \ref{sec::methodology}, was then compared against this ground truth to assess the accuracy of the system.
+
+The performance of the presented method was assessed using two categories of metrics: measurement accuracy and tracking retention (success rate). Let $L_{est}$ be the final aggregated length estimated by the pipeline (in cm), and $L_{GT}$ be the actual physical length of the specimen (in cm). For each successfully aggregated track, the absolute error ($E_{abs}$) and the relative percentage error ($E_{perc}$) were defined as:
+
+\begin{equation}
+    E_{abs} = | L_{est} - L_{GT} |
+    \label{eq:abs_error}
+\end{equation}
+
+\begin{equation}
+    E_{perc} (\%) = \left( \frac{| L_{est} - L_{GT} |}{L_{GT}} \right) \times 100
+    \label{eq:rel_error}
+\end{equation}
+
+To evaluate the overall accuracy across different datasets and scenarios, the Mean Absolute Error (MAE), the Standard Deviation (STD) of the absolute error, and the Mean Absolute Percentage Error (MAPE) were calculated. 
+
+In addition to standard error metrics, we defined the Success Rate as the percentage of initial valid tracks ($N_{total}$) that retained enough high-quality frames to yield a final aggregated measurement ($N_{measured}$):
+
+\begin{equation}
+    \text{Success Rate (\%)} = \left( \frac{N_{measured}}{N_{total}} \right) \times 100
+    \label{eq:success_rate}
+\end{equation}
+
+A successful estimation is defined as a track for which all geometric and temporal validity criteria are satisfied, ensuring that the resulting length measurement is physically plausible and stable across frames. This definition prioritizes measurement reliability over coverage, which is critical in non-invasive ecological monitoring applications.
+
+
+\subsection{Implementation Details}\label{subsec::implemdetail}
+
+To ensure reproducibility, this section summarizes the main implementation details and parameter settings used throughout the experiments.
+
+\begin{itemize}
+    \item \textbf{Model Weights and Inference:}
+    The instance segmentation network (\textit{YOLOv11m-seg}) builds upon the multi-species detection framework previously presented by the authors in \citep{muntaner2025automatic}. For the specific requirements of this morphometric pipeline, the model was fine-tuned to operate exclusively as a class-agnostic generic fish detector. To ensure immediate reproducibility without detailing redundant training hyperparameters, the final pre-trained model weights (\texttt{.pt} format) utilized for all experiments and deployments is publicly available in the project's official GitHub repository. Inference was performed using an input resolution of 1024 and a confidence threshold of 0.5.
+    
+    \item \textbf{Tracking Configuration:}
+    Multi-object tracking was performed using the \textit{Bot-SORT} algorithm, seamlessly integrated with the YOLO detections. To maximize reproducibility and facilitate implementation, the tracker was deployed using the default configuration parameters provided by the \textit{Ultralytics} framework. This standard setup proved sufficiently robust for handling the underwater kinematics, ID assignment, and temporary occlusions present in our datasets without the need for environment-specific hyperparameter tuning.
+    
+    \item \textbf{Stereo Matching and Depth Estimation:}
+    Stereo correspondence was computed using OpenCV's Semi-Global Block Matching (SGBM) algorithm configured in the full Hirschmüller mode (\texttt{MODE\_HH}) to maximize disparity accuracy. The matching block size was set to 7, with a minimum disparity of 20 and a total of 96 disparity levels. Smoothness penalties $P_1$ and $P_2$ were scaled using factors of 8 and 24, respectively. To handle outliers and noise, the uniqueness ratio was set to 25, the speckle window size to 100 with a speckle range of 2, and the maximum allowed difference in the left-right consistency check was strictly limited to 1 pixel. Finally, the resulting disparity maps were refined using a Weighted Least Squares (WLS) filter configured with a lambda ($\lambda$) of 2000.0 and a sigma ($\sigma$) of 0.8.
+    
+    
+    \item \textbf{Geometric and Spatial Filtering:}
+    Several strict geometric constraints were applied to ensure valid 3D length estimations. Depth estimates exceeding a maximum threshold of 3.2 m were discarded to prevent inaccuracies caused by severe underwater light attenuation and baseline limitations. The maximum allowable elevation angle relative to the camera was set to $\theta_{max} = 30^\circ$. Detections intersecting the image boundaries were immediately rejected. In cases of overlapping bounding boxes, the instance with the smaller mean $Z$-coordinate (closest to the camera) was retained. Furthermore, bounding boxes were required to exhibit an aspect ratio where the longitudinal dimension strictly exceeded the vertical dimension.
+    
+    
+    \item \textbf{Temporal Aggregation:}
+    Length estimates were aggregated exclusively for tracks containing a minimum of $N > 5$ valid frames. The gross outlier rejection threshold was set to discard any candidate exceeding $2\tilde{L}$ (twice the median of the track). The temporal consistency validation required the relative difference between consecutive sorted candidates to be strictly less than 5\%. For highly populated tracks ($|L| \ge 20$), the final biometric metric was computed as the arithmetic mean of the top 20 highest valid measurements.
+
+
+\end{itemize}
+
+
+
+\section{Results and Discussion}\label{sec::results}
+
+This section presents and discusses the results obtained from the proposed method when evaluated on Dataset A and Dataset B, considering both single-fish and multiple-fish scenarios. 
+
+\subsection{Overall Performance and Accuracy}
+
+The global performance of the fish measurement system across datasets and scenarios (single-fish and multiple-fish videos) is summarized in Table \ref{tab:global_metrics_grouped}.
+
+
+As observed, the system exhibited consistent measurement performance under highly diverse recording conditions, achieving a global MAE of 1.30 cm and a MAPE of 4.53\%.
+
+
+
+In Dataset A, the pipeline successfully measured both isolated fish and overlapping individuals despite varying backgrounds and illumination setups. This dataset deliberately included extreme edge cases, such specimens swimming perpendicularly to the camera and also comprises videos at a lowest frame rate of 4 fps, a frame rate at which the tracker struggled to follow the fish consistently, which explains the lower success rate in the single-fish scenario (29.7\%).
+
+Remarkably, the methodology transitioned seamlessly to the dynamic, live conditions of Dataset B. The system performed reliably not only for isolated live individuals but also in complex multi-fish environments containing up to three simultaneously active, free-swimming specimens. This consistency between controlled and live datasets supports the reliability of the core 3D aggregation algorithm.
+
+
+% ========================================================================================================
+% CATEGORY                       | Total Tracks | Measured   | Success (%)  | MAE (cm)   | STD (cm)   | MAPE (%)  
+% --------------------------------------------------------------------------------------------------------
+% Dataset A Single               | 232          | 69         | 29.7         | 1.04       | 1.55       | 3.46      
+% Dataset A Multiple             | 340          | 210        | 61.8         | 1.35       | 1.65       | 4.85      
+% Dataset A Global               | 572          | 279        | 48.8         | 1.27       | 1.63       | 4.51      
+% Dataset B Single               | 57           | 27         | 47.4         | 1.63       | 2.58       | 5.59      
+% Dataset B Multiple             | 132          | 72         | 54.5         | 1.26       | 1.47       | 4.21      
+% Dataset B Global               | 189          | 99         | 52.4         | 1.36       | 1.83       | 4.58      
+% Global Single                  | 289          | 96         | 33.2         | 1.21       | 1.90       | 4.06      
+% Global Multiple                | 472          | 282        | 59.7         | 1.33       | 1.61       | 4.69      
+% GLOBAL TOTAL                   | 761          | 378        | 49.7         | 1.30       | 1.68       | 4.53      
+% ========================================================================================================
+
+
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Category} & \makecell{\textbf{\textit{N\_total}}} & \textbf{\textit{N\_measured}} &\makecell{\textbf{Success Rate}\\\textbf{(\%)}} & \makecell{\textbf{MAE}\\\textbf{(cm)}} & \makecell{\textbf{STD}\\\textbf{(cm)}} & \makecell{\textbf{MAPE}\\\textbf{(\%)}} \\
+\midrule
+\multicolumn{7}{l}{\textbf{Dataset A}} \\
+\cmidrule(l){1-7}
+Single      & 232 & 69  & 29.7 & 1.04 & 1.55 & 3.46 \\
+Multiple    & 340 & 210 & 61.8 & 1.35 & 1.65 & 4.85 \\
+Global      & 572 & 279 & 48.8 & 1.27 & 1.63 & 4.51 \\
+\midrule
+\multicolumn{7}{l}{\textbf{Dataset B}} \\
+\cmidrule(l){1-7}
+Single      & 57  & 27  & 47.4 & 1.63 & 2.58 & 5.59 \\
+Multiple    & 132 & 72  & 54.5 & 1.26 & 1.47 & 4.21 \\
+Global      & 189 & 99  & 52.4 & 1.36 & 1.83 & 4.58 \\
+\midrule
+\multicolumn{7}{l}{\textbf{Global}} \\
+\cmidrule(l){1-7}
+Single      & 289 & 96  & 33.2 & 1.21 & 1.90 & 4.06 \\
+Multiple    & 472 & 282 & 59.7 & 1.33 & 1.61 & 4.69 \\
+\midrule
+\textbf{TOTAL} & \textbf{761} & \textbf{378} & \textbf{49.7} & \textbf{1.30} & \textbf{1.68} & \textbf{4.53} \\
+\bottomrule
+\end{tabular}
+\caption{Summary of measurement accuracy and tracking retention across scenarios and datasets. Metrics include absolute error (MAE), standard deviation (STD), mean absolute percentage error (MAPE), and success rate.}
+\label{tab:global_metrics_grouped}
+\end{table}
+
+
+The overall global success rate stands at 49.7\%, meaning that approximately half of the detected tracks were discarded during the filtering process. Rather than an algorithmic failure, this high rejection rate is the result of a deliberate, conservative architectural strategy. The pipeline strictly discards tracks that fail to meet optimal posture, aspect ratio, or spatial completeness criteria to ensure that only physically plausible and stable observations contribute to the final length estimation. In long-term, unattended deployments, such as continuous monitoring in aquaculture sea cages or benthic observatories, maximizing measurement reliability is prioritized over sample volume. A system deployed continuously will naturally acquire a vast number of sporadic optimal observations over time, making it preferable to discard ambiguous data rather than log erroneous biometric estimations.
+
+Figure \ref{fig:track rejection reasons} illustrates the distribution of track rejection reasons. As observed, most rejected tracks correspond to geometrically ill-posed configurations or tracks with insufficient samples. The primary reasons for track rejection can be categorized as follows:
+
+\begin{figure}
+    \centering
+    \includegraphics[width=1\linewidth]{Figure_8_track_failure_reasons.png}
+    \caption{Track rejection reasons}
+    \label{fig:track rejection reasons}
+\end{figure}
+
+\begin{itemize}
+
+
+    \item \textbf{Short Tracks:} Tracks containing fewer than six valid frames were systematically discarded to prevent isolated predictions and reduce the likelihood of spurious measurements caused by transient lighting artifacts. Short tracks occurred predominantly in Dataset A, which comprises recordings across three different days with varying frame rates. In videos with lower frame rates (approximately 4\,fps), fast-moving fish, or fish entering and exiting the frame or being occluded by scene objects, often resulted in tracks shorter than the minimum threshold.
+
+    \item \textbf{Aspect Ratio:} This was the second most frequent cause of rejection, particularly in Dataset A. As previously mentioned, this dataset included a wide range of poses to capture all possible scenarios. Consequently, many fish were oriented perpendicular to the camera, making measurement impossible. In contrast, this issue was less prevalent with live fish, although some sequences featured fish stationary and facing the camera, which similarly prevented accurate measurements. 
+    
+    \item \textbf{Elevation and Edge Proximity:} A 6.7\% of tracks were rejected due to unfavorable elevation angles ($>30^\circ$) that cause self-occlusion and stereo degradation, while another 3.8\% were discarded because the specimens intersected the image boundaries.
+
+    
+    \item \textbf{Overlap and Occlusion:} Overlap occurred primarily in Dataset B, logically in multiple-fish sequences. This is expected because live fish, especially \textit{Dicentrarchus labrax}, exhibit social behavior and often swim closely together, making some tracks unmeasurable. When live schooling fish momentarily disperse or break formation, the pipeline isolates those transient optimal frames to yield accurate aggregated measurements. 
+    
+    \item \textbf{Incomplete or erroneous point cloud}:Tracks were also rejected when the point cloud was incomplete or poorly defined, accounting for less than 4\% of cases. Causes include insufficient point density, a nearly spherical point cloud shape, or disparity issues. This was most prevalent in Dataset A due to slightly suboptimal camera calibration in the initial recording sessions, though the effect was minor.
+ 
+    
+\end{itemize}
+
+Overall, these rejection criteria ensure high-confidence measurements while minimizing the impact of poor-quality tracks on the analysis. Discarding these frames prevents the introduction of noisy and inaccurate measurements into the dataset and acts as a safety mechanism, preserving the reliability of the final aggregated length estimates. 
+
+
+% =========================================================================================================
+%                                    METRICS BY SPECIES (UNIFIED)
+% =========================================================================================================
+% SPECIES                        | Total Tracks | Measured   | Success (%)  | MAE (cm)   | STD (cm)   | MAPE (%)  
+% ---------------------------------------------------------------------------------------------------------
+% D. labrax                      | 343          | 149        | 43.4         | 1.29       | 1.81       | 4.24      
+% S. scombrus                    | 197          | 95         | 48.2         | 1.24       | 1.58       | 4.29      
+% M. poutassou                   | 100          | 73         | 73.0         | 1.47       | 1.32       | 4.67      
+% B. boops                       | 121          | 61         | 50.4         | 1.17       | 1.92       | 5.44      
+% ========================================================================================================
+
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Species} & \makecell{\textbf{Total}\\\textbf{Tracks}} & \textbf{Measured} & \makecell{\textbf{Success Rate}\\\textbf{(\%)}} & \makecell{\textbf{MAE}\\\textbf{(cm)}} & \makecell{\textbf{STD}\\\textbf{(cm)}} & \makecell{\textbf{MAPE}\\\textbf{(\%)}} \\
+\midrule
+\textit{D. labrax}    & 343 & 149 & 43.4 & 1.29 & 1.81 & 4.24 \\
+\textit{S. scombrus}  & 197 & 95  & 48.2 & 1.24 & 1.58 & 4.29 \\
+\textit{M. poutassou} & 100 & 73  & 73.0 & 1.47 & 1.32 & 4.67 \\
+\textit{B. boops}     & 121 & 61  & 50.4 & 1.17 & 1.92 & 5.44 \\
+\bottomrule
+\end{tabular}
+\caption{Measurement metrics grouped by species, including tracking success rate, mean absolute error (MAE), standard deviation (STD), and mean absolute percentage error (MAPE).}
+\label{tab:metrics_by_species}
+\end{table}
+
+
+
+Finally, Table \ref{tab:metrics_by_species} summarizes the system's performance across different anatomical profiles. The MAE remained consistently low and largely independent of specific fish morphology. Both fusiform species (e.g., \textit{S. scombrus}) and moderately laterally compressed species (e.g., \textit{D. labrax}) yielded comparable MAE values, demonstrating the versatility of the approach without requiring species-specific calibration. While the method was originally designed for fusiform fish, it can be readily adapted to other body shapes by adjusting the aspect ratio constraints and the axis used for the plane-clipping strategy.
+
+
+
+
+
+\section{Autonomous Stereo Vision System Deployment}\label{sec::Field-tests}
+
+
+
+
+Once the length estimation pipeline was quantitatively validated in a controlled environment using specimens of known dimensions, autonomous field deployments were conducted to evaluate its operational feasibility in real-world scenarios. The custom-designed SVS presented in Section \ref{sec::SVS} running the developed algorithm, was deployed in coastal areas of the Spanish Mediterranean. During these field tests, the SVS operated under completely unconstrained marine conditions, exposing the algorithm to typical underwater optical challenges such as back-scattering, variable turbidity, and drastic illumination changes. Notably, the deployments included night-time operations using artificial LED lighting, presenting a significantly more complex visual environment compared to the controlled pool tank.
+
+Despite these challenging conditions, the system successfully performed real-time on-board inference, processing the stereo pairs on the edge to generate biological logs of the detected species and their corresponding length measurements. An illustrative example of the pipeline processing a night-time sequence is shown in Figure \ref{fig:cabrera_night}. 
+
+\begin{figure}[htbp]
+\centering
+%  %left bottom right top
+\begin{tabular}{ccc}
+    \includegraphics[height=3.2cm]{Figure_9a_frame_192_left.png} &
+    \includegraphics[height=3.2cm]{Figure_9b_frame_frame_192_inferred.jpg} &
+    \includegraphics[height=3.2cm, trim=0 0 100 0, clip]{Figure_9c_pointcloud_filtered.png} \\
+    (a) Left frame & (b) Inferred frame & (c) Filtered point cloud \\
+\end{tabular}
+
+\vspace{1em}
+
+\begin{tabular}{cc}
+    \includegraphics[height=5cm]{Figure_9d_pointcloud_measure.png} &
+    \includegraphics[width=0.4\textwidth]{Figure_9e_pointcloud_scene_cabrera.png} \\
+    (d) Measurement & (e) Point cloud of the scene \\
+\end{tabular}
+
+\caption{Example of the results of the pipeline when executed in a night-time video acquired in natural open-sea conditions off the coast of Cabrera (Spain)}
+\label{fig:cabrera_night}
+
+\end{figure}
+
+Due to the unconstrained conditions of open-water deployments, direct physical measurements of free-swimming fish were not obtained, preventing quantitative error assessment. However, the system generated morphometric estimates that were generally consistent with the expected size distributions of the observed fish. When considered alongside the quantitative validation presented in Section \ref{sec::results}, these field observations provide descriptive evidence of the system’s performance under natural conditions. Supplementary material includes video examples illustrating the pipeline’s operation during these deployments.
+
+This autonomous edge-computing framework offers a complementary approach for marine observation, intended to support researchers rather than replace human expertise. By automatically extracting biological markers in situ, without requiring physical or extractive sampling, the system can help reduce the manual processing typically associated with underwater video analysis. While periodic expert supervision and data validation remain advisable to ensure long-term accuracy, the pipeline enables continuous and scalable data acquisition. 
+
+
+Moreover, the inherent modularity of the proposed architecture strictly decouples the 2D instance segmentation from the 3D geometric reconstruction. Consequently, exporting this framework to entirely different marine ecosystems or targeting distinct species requires only the adaptation or retraining of the initial 2D detection model, leaving the core 3D morphometric pipeline intact. 
+
+
+\section{Conclusions and Future Work}\label{sec::conclusions}
+
+
+This work presents a modular, non-invasive 3D vision pipeline for automatic fish length estimation in unconstrained underwater environments. The main novelty lies in the integration of stereo-based reconstruction, track-level aggregation, and conservative geometric filtering within a unified and deployable system for real-world conditions. By combining instance segmentation, multi-object tracking, and stereo 3D reconstruction, the system achieves robust and accurate measurements, reaching a Mean Absolute Error (MAE) of 1.3 cm across diverse and challenging scenarios.
+
+Unlike existing approaches, the proposed method does not rely on calibration patterns, handling procedures, or species-specific morphological priors. This design enables generalization across different anatomical profiles, facilitating scalable and non-invasive biometric data collection.
+
+Quantitative results indicate that the system performs consistently across datasets of varying complexity. The applied conservative filtering strategy helps maintain reliable measurements under these conditions. The successful integration of the pipeline into an autonomous SVS demonstrates its potential for real-time on-board operation in continuous monitoring scenarios.
+
+To address the historical scarcity of benchmarking resources in marine computer vision, we publicly release the annotated dataset used in this study, alongside the code of the designed measuring pipeline. The pipeline was deliberately designed to be modular; therefore, any future advancements in the underlying sub-modules, such as the 2D object detection model, the tracking algorithm, or stereo depth estimation, can be integrated to upgrade the overall pipeline performance without altering its core logic.
+
+
+Beyond its technical contributions, this work supports a shift towards scalable, non-invasive marine observation systems capable of generating continuous biometric data. Such capabilities enable the analysis of size distributions, population structure, and growth dynamics, providing valuable information for fisheries science, aquaculture management, and ecosystem monitoring. 
+
+Despite its success, the current system relies on a highly restrictive filtering policy to guarantee measurement reliability, which inevitably leads to a high rejection rate of challenging tracks (e.g., during severe occlusions or rapid movements). While this conservative approach is optimal for long-term, unattended deployments, where the volume of continuous sporadic sampling compensates for discarded frames, the system cannot yet entirely replace human supervision for fine-grained, individual-level physiological analysis. 
+
+
+Future work will primarily focus on improving multi-object tracking algorithms to better handle severe occlusions, a critical factor when monitoring highly gregarious species that exhibit tight schooling behaviors. Additionally, refining the 3D point cloud reconstruction would further reduce the absolute measurement error. Such advancements in tracking and 3D fidelity would allow for a safe relaxation of the current spatial and geometric reliability conditions, thereby significantly increasing the yield of valid measurements per video sequence. 
+
+\section*{Animal welfare statement}
+
+All animal care procedures were approved by the Animal Experimentation Ethics Committee of the University of the Balearic Islands (CEEA-UIB, ref. 254-03-25) and authorized by the Animal Health and Welfare Service of the General Directorate for Agriculture, Livestock and Rural Development of the Government of the Balearic Islands (exp. SSBA 11/2025 AEXP). All procedures were carried out by trained and competent personnel, in accordance with European Directive 2010/63/EU and Spanish Royal Decree RD53/2013 to ensure good practices for animal care, health and welfare.
+
+
+\section*{Acknowledgments}
+The authors would like to thank Laboratori d’Investigacions Marines i Aqüicultura (IRFAP LIMIA, IRFAP, Conselleria Agricultura, Pesca i Medi Natural, Govern de les Illes Balears) and The Mediterranean Institute for Advanced Studies (IMEDEA, CSIC-UIB) for their support in helping us build dataset B for this study.
+
+The authors acknowledge the use of the ChatGPT (GPT-5.2) model for assistance in reviewing the English language (orthography and syntax) of the manuscript.
+
+
+
+\section*{Funding}
+% FPU-CAIB
+Caterina Muntaner-Gonzalez was supported by the Consejería de Educación y Universidades del Gobierno de las Illes Balears under the contract FPU-2022-010-C CAIB 2022. 
+
+% TANDEM 
+This work is partially supported by Grant PID2023-149910OB-C33 funded by \\ MICIU/AEI/10.13039/501100011033 and FEDER-UE funding 
+
+% AI4SEA
+This work is partially supported by AIA2025-163346-C42 funded by MICIU/AEI /10.13039/501100011033 
+
+
+
+\section*{Conflict of Interest Statement}
+%All financial, commercial or other relationships that might be perceived by the academic community as representing a potential conflict of interest must be disclosed. If no such relationship exists, authors will be asked to confirm the following statement: 
+The authors declare that the research was conducted in the absence of any commercial or financial relationships that could be construed as a potential conflict of interest.
+
+
+
+\section*{Data Availability Statement}
+
+% Temporarily restricted before publication
+The datasets generated and used in this work can be found in this \href{https://zenodo.org/records/19408363?preview=1&token=eyJhbGciOiJIUzUxMiJ9.eyJpZCI6ImUxOWVhZTRiLTMxYWYtNDY4NS05ZWVkLTRmMTQ4MDRjMTQ5NyIsImRhdGEiOnt9LCJyYW5kb20iOiIzNGNlYmY2NTNhZDUyN2JhODQ0ZTQ5ZmUzMjYxNjIyMiJ9.ehM6b0ys9Fhe_um9gSyPsoz74RgD4zvm7CaR_tQ9zWmRLXF7iGZRo6lrvu64bs-Jpd89VHTfYd9tgyfWH5cB0w}{Zenodo} repository \citep{muntaner2026fishsizing}.
+
+
+\bibliographystyle{Frontiers-Harvard} %  Many Frontiers journals use the Harvard referencing system (Author-date), to find the style and resources for the journal you are submitting to: https://zendesk.frontiersin.org/hc/en-us/articles/360017860337-Frontiers-Reference-Styles-by-Journal. For Humanities and Social Sciences articles please include page numbers in the in-text citations 
+% \bibliographystyle{Frontiers-Vancouver} % Many Frontiers journals use the numbered referencing system, to find the style and resources for the journal you are submitting to: https://zendesk.frontiersin.org/hc/en-us/articles/360017860337-Frontiers-Reference-Styles-by-Journal
+\bibliography{biblio}
+
+%%% Make sure to upload the bib file along with the tex file and PDF
+%%% Please see the test.bib file for some examples of references
+
+
+\end{document}
